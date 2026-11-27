@@ -1,5 +1,4 @@
 import * as cp from 'child_process';
-import * as xml2js from 'xml2js';
 import { sshConfigArguments } from './sshConfig';
 
 export interface SlurmJobInfo {
@@ -185,56 +184,6 @@ export class GpuMonitor {
         });
     }
 
-    public async parseNvidiaSmiXml(
-        xml: string,
-        owners: Map<string, string> = new Map()
-    ): Promise<GpuInfo[]> {
-        const parser = new xml2js.Parser({ explicitArray: false });
-        const result = await parser.parseStringPromise(xml);
-        const gpus = result?.nvidia_smi_log?.gpu;
-        if (!gpus) {
-            return [];
-        }
-        const gpuList = Array.isArray(gpus) ? gpus : [gpus];
-        return gpuList.map((gpu: any, index: number) => {
-            const processInfo = gpu.processes?.process_info;
-            const processList = processInfo ? (Array.isArray(processInfo) ? processInfo : [processInfo]) : [];
-            const powerReadings = gpu.power_readings || gpu.gpu_power_readings || {};
-            return {
-                index: index.toString(),
-                uuid: this.value(gpu.uuid),
-                name: this.value(gpu.product_name, 'Unknown GPU'),
-                utilization: {
-                    gpu: this.value(gpu.utilization?.gpu_util),
-                    memory: this.value(gpu.utilization?.memory_util)
-                },
-                memory: {
-                    total: this.value(gpu.fb_memory_usage?.total),
-                    free: this.value(gpu.fb_memory_usage?.free),
-                    used: this.value(gpu.fb_memory_usage?.used)
-                },
-                temperature: { gpu: this.value(gpu.temperature?.gpu_temp) },
-                power: {
-                    draw: this.value(powerReadings.power_draw || powerReadings.instant_power_draw),
-                    limit: this.value(powerReadings.power_limit || powerReadings.current_power_limit)
-                },
-                fanSpeed: this.value(gpu.fan_speed),
-                processes: processList.map((process: any) => {
-                    const pid = this.value(process.pid);
-                    const name = this.value(process.process_name, 'unknown');
-                    return {
-                        pid,
-                        user: owners.get(pid) || 'unknown',
-                        name,
-                        command: name,
-                        elapsedSeconds: 0,
-                        usedMemory: this.value(process.used_memory)
-                    };
-                })
-            };
-        });
-    }
-
     public parseHostHealth(output: string): HostHealth | undefined {
         const line = output.split(/\r?\n/).find(value => /^[-0-9.]+\|/.test(value.trim()));
         if (!line) {
@@ -306,19 +255,6 @@ export class GpuMonitor {
             `up=$(cut -d. -f1 /proc/uptime 2>/dev/null)`,
             `if [ -n "$loads" ] && [ -n "$mem" ] && [ -n "$disk" ] && [ -n "$up" ]; then printf '%s|%s|%s|%s\n' "$loads" "$mem" "$disk" "$up"; fi`
         ].join('; ');
-    }
-
-    public async queryTask(host: string, kind: import('./taskQueries').TaskQuery, args: Record<string, unknown>, options: MonitorOptions): Promise<any> {
-        this.validateHost(host);
-        const { taskCommand, redactTaskText } = await import('./taskQueries');
-        const raw = await this.execSsh(host, taskCommand(kind, args), Math.max(2, Math.min(options.timeoutSeconds, 60)), options.sshConfigPath, options.signal);
-        try {
-            const redact = (value: any): any => typeof value === 'string' ? redactTaskText(value)
-                : Array.isArray(value) ? value.map(redact)
-                : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([key,entry]) => [key,redact(entry)])) : value;
-            return redact(JSON.parse(raw));
-        }
-        catch { throw new Error('Task query returned invalid data. Linux /proc and python3 are required on the SSH host.'); }
     }
 
     private execSsh(host: string, remoteCommand: string, timeoutSeconds: number, configPath?: string, signal?: AbortSignal): Promise<string> {

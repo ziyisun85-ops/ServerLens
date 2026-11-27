@@ -16,9 +16,7 @@ import {
 import { getDashboardCss, getDashboardScript, getDashboardTranslation } from './webviewTemplate';
 import { preferenceFields, validatePreferenceChanges } from './preferences';
 import { getPreferencesHtml } from './preferencesView';
-import { getAssistantHtml } from './assistantView';
-import { AiController } from './aiController';
-import { TaskService, visibleFleet } from './taskService';
+import { visibleFleet } from './fleetModel';
 import { sshConfigArguments } from './sshConfig';
 
 export { GpuStatusSummary } from './fleetModel';
@@ -82,7 +80,6 @@ export class GpuViewPanel {
     private lastData: ServerStatus[] = [];
     private lastCompletedAt = 0;
     private lastNotificationAt = 0;
-    private readonly assistant: AiController;
     private savingPreferences = false;
     private publication = 0;
 
@@ -96,8 +93,6 @@ export class GpuViewPanel {
         this.context = context;
         this.host = host;
         this.onStatusUpdate = onStatusUpdate;
-        this.assistant = new AiController(context, panel.webview, () => this.lastData, () => this.publishCurrent(),host===undefined?'fleet':'server:'+host);
-        this.disposables.push(this.assistant);
         GpuViewPanel.panels.add(this);
         this.panel.webview.html = this.getWebviewContent();
 
@@ -193,13 +188,11 @@ export class GpuViewPanel {
             return;
         }
         const payload = message as Record<string, unknown>;
-        if (await this.assistant.handle(payload)) return;
         switch (payload.command) {
             case 'refresh':
                 await this.requestRefresh(true);
                 break;
             case 'ready':
-                this.assistant.reset();
                 await this.showCachedAndRefreshIfStale();
                 break;
             case 'connect':
@@ -247,8 +240,6 @@ export class GpuViewPanel {
 
     private async handleConfigurationChange(event: vscode.ConfigurationChangeEvent): Promise<void> {
         if (this.savingPreferences) return;
-        if (this.affectsAny(event,['ai.protocol','ai.baseUrl','ai.model'])) this.assistant.reset();
-        if(event.affectsConfiguration('gpu-fleet-viewer.ai.saveChatHistory'))this.assistant.historySettingsChanged();
         if (this.affectsAny(event, AUTO_REFRESH_KEYS)) {
             this.scheduleAutoRefresh();
         }
@@ -277,8 +268,6 @@ export class GpuViewPanel {
             try {
                 for (const [key, value] of entries) await config.update(key, value, vscode.ConfigurationTarget.Global);
             } finally { this.savingPreferences = false; }
-            if (entries.some(([key]) => ['ai.protocol','ai.baseUrl','ai.model'].includes(key))) this.assistant.reset();
-            if(entries.some(([key])=>key==='ai.saveChatHistory'))this.assistant.historySettingsChanged();
             if (entries.some(([key]) => key === 'sshConfigPath')) {
                 this.duplicateAliases.clear(); this.lastSuccessful.clear();this.failedHosts.clear(); GpuViewPanel.snapshotCache.clear();
             }
@@ -435,14 +424,15 @@ export class GpuViewPanel {
             const shouldQuerySlurm = slurmEnabled && settings.showProcesses &&
                 Date.now() - (this.lastSlurmQueryAt.get(host) || 0) >= slurmInterval;
             const includeOwners = settings.showProcesses || Boolean(config.get<string>('researchUser', ''));
-            const snapshot = await TaskService.get(this.context).snapshot(host, {
+            void force;
+            const snapshot = await this.monitor.getServerSnapshot(host, {
                 sshConfigPath: config.get<string>('sshConfigPath'),
                 timeoutSeconds,
                 includeProcessOwners: includeOwners,
                 includeProcesses: includeOwners || settings.availabilityRequireNoProcesses,
                 includeHostHealth: settings.showHostHealth,
                 includeSlurm: shouldQuerySlurm
-            }, force?0:Math.min(2000,Math.max(2,config.get<number>('refreshInterval',5))*500), this.monitor);
+            });
             if (shouldQuerySlurm) {
                 this.lastSlurmQueryAt.set(host, Date.now());
                 if (snapshot.slurmAvailable) {
@@ -586,7 +576,6 @@ export class GpuViewPanel {
         const visible = visibleFleet(this.lastData, config.get<Record<string,string[]>>('visibleGpus',{}));
         const summary = summarizeFleet(visible, settings);
         const revision = ++this.publication;
-        const aiConfigured = await this.assistant.isConfigured();
         if (this.disposed || revision !== this.publication) return;
         this.onStatusUpdate?.(summary);
         if (notify) {
@@ -602,7 +591,6 @@ export class GpuViewPanel {
             users: settings.showProcesses ? aggregateUsers(visible) : [],
             settings,
             preferences: Object.fromEntries(preferenceFields.map(field => [field.key, config.get(field.key, field.default)])),
-            aiConfigured,
             summary,
             refresh: { active: refreshing, completed, total,automatic:config.get<boolean>('autoRefresh',true),intervalSeconds:Math.max(2,config.get<number>('refreshInterval',5)) }
         });
@@ -811,7 +799,6 @@ export class GpuViewPanel {
             <header class="toolbar">
                 <div class="product-heading"><h1 id="page-title"></h1><div class="product-meta"><span id="refresh-state" class="subtle"></span><button id="refresh-mode" class="meta-button" type="button"></button></div></div>
                 <div class="toolbar-actions">
-                    <button id="assistant-button" class="secondary-button"></button>
                     <button id="settings-button" class="secondary-button"></button>
                     <button id="refresh-button"></button>
                 </div>
@@ -837,7 +824,6 @@ export class GpuViewPanel {
                 <aside id="gpu-details" class="gpu-details" aria-labelledby="gpu-details-title" hidden></aside>
             </div>
             ${getPreferencesHtml()}
-            ${getAssistantHtml()}
             <script nonce="${nonce}">${getDashboardScript()}</script>
         </body>
         </html>`;

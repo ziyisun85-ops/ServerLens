@@ -14,26 +14,6 @@ import {
 } from '../fleetModel';
 import { SshConfigParser } from '../sshConfig';
 
-const dummyXml = `<?xml version="1.0" ?>
-<nvidia_smi_log>
-    <gpu id="00000000:01:00.0">
-        <product_name>NVIDIA GeForce RTX 4090</product_name>
-        <uuid>GPU-test-uuid</uuid>
-        <fan_speed>34 %</fan_speed>
-        <temperature><gpu_temp>45 C</gpu_temp></temperature>
-        <fb_memory_usage>
-            <total>24564 MiB</total><used>1234 MiB</used><free>23330 MiB</free>
-        </fb_memory_usage>
-        <utilization><gpu_util>15 %</gpu_util><memory_util>5 %</memory_util></utilization>
-        <power_readings><power_draw>120.50 W</power_draw><power_limit>450.00 W</power_limit></power_readings>
-        <processes>
-            <process_info>
-                <pid>1234</pid><process_name>/usr/bin/python3</process_name><used_memory>1024 MiB</used_memory>
-            </process_info>
-        </processes>
-    </gpu>
-</nvidia_smi_log>`;
-
 async function runTest(): Promise<void> {
     const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'gpu-viewer-test-'));
     const configPath = path.join(temporaryDirectory, 'ssh_config');
@@ -69,14 +49,6 @@ async function runTest(): Promise<void> {
         ], 'Host aliases must share block options; wildcard and Match blocks must not overwrite them.');
 
         const owners = new Map([['1234', 'alice']]);
-        const gpus = await new GpuMonitor().parseNvidiaSmiXml(dummyXml, owners);
-        assert.strictEqual(gpus.length, 1);
-        assert.strictEqual(gpus[0].name, 'NVIDIA GeForce RTX 4090');
-        assert.strictEqual(gpus[0].fanSpeed, '34 %');
-        assert.strictEqual(gpus[0].power.draw, '120.50 W');
-        assert.strictEqual(gpus[0].processes[0].user, 'alice');
-        assert.strictEqual(gpus[0].processes[0].usedMemory, '1024 MiB');
-
         const queryOutput = '0, GPU-test-uuid, NVIDIA GeForce RTX 4090, 15, 5, 24564, 23330, 1234, 45, 120.50, 450.00, 34';
         const processOutput = 'GPU-test-uuid, 1234, "/usr/bin/python,worker", 1024';
         const queriedGpus = new GpuMonitor().parseNvidiaSmiQuery(queryOutput, processOutput, owners);

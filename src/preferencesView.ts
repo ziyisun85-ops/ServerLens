@@ -25,7 +25,6 @@ export function getPreferencesScript(): string {
             let baseline = {};
             let activeTab = 'servers';
             let saving = false;
-            let hasKey = false;
             let catalog = [];
             let gpuSelection = {};
             const tr = (en, zh) => language === 'zh-CN' ? zh : en;
@@ -51,14 +50,6 @@ export function getPreferencesScript(): string {
             function dirtyValues() {
                 return Object.fromEntries(Object.entries(values()).filter(([key, value]) => JSON.stringify(value) !== JSON.stringify(baseline[key])));
             }
-            function keyAction(command) {
-                const dirty = dirtyValues();
-                if ('ai.protocol' in dirty || 'ai.baseUrl' in dirty) {
-                    status.textContent = t('saveEndpointFirst');
-                    return;
-                }
-                vscode.postMessage({ command });
-            }
             function fill() {
                 baseline = {};
                 gpuSelection = JSON.parse(JSON.stringify(latest.visibleGpus || {}));
@@ -71,7 +62,7 @@ export function getPreferencesScript(): string {
                 status.textContent = '';
                 document.getElementById('preferences-discard').hidden = true;
                 document.getElementById('preferences-reset').textContent = tr('Reset this section', '重置当前页');
-                for (const group of ['servers', 'refresh', 'display', 'availability', 'notifications', 'ai']) {
+                for (const group of ['servers', 'refresh', 'display', 'availability', 'notifications']) {
                     const tab = button(t('preferences_' + group), 'secondary-button', () => activate(group));
                     tab.dataset.group = group;
                     tabs.append(tab);
@@ -90,7 +81,7 @@ export function getPreferencesScript(): string {
                         baseline[field.key] = value;
                         if (field.type === 'gpus') {
                             label.classList.add('gpu-scope-setting');
-                            label.append(title, node('p','subtle settings-help',tr('Display and AI scope only. Existing reminders keep monitoring hidden cards.','仅影响显示与默认 AI 范围；已有提醒继续监测被隐藏的卡。')));
+                            label.append(title, node('p','subtle settings-help',tr('Display scope only; hidden GPUs are still collected.','仅影响显示范围；隐藏的 GPU 仍会采集。')));
                             const entries = new Map(catalog.map(server => [server.host, server]));
                             for (const host of Object.keys(gpuSelection)) if (!entries.has(host)) entries.set(host,{host,label:host,gpus:[]});
                             if (!entries.size) input.append(node('p','subtle',tr('Choose servers and refresh once to discover GPUs.','选择服务器并刷新一次，即可勾选 GPU。')));
@@ -125,7 +116,7 @@ export function getPreferencesScript(): string {
                             }
                         } else if (field.type === 'enum') {
                             for (const option of field.options) {
-                                const entry = node('option', '', option === 'auto' ? t('followEditor') : option === 'openai' ? 'OpenAI compatible' : option === 'anthropic' ? 'Anthropic Messages' : option==='en'?'English':option==='zh-CN'?'简体中文':option);
+                                const entry = node('option', '', option === 'auto' ? t('followEditor') : option==='en'?'English':option==='zh-CN'?'简体中文':option);
                                 entry.value = option;
                                 input.append(entry);
                             }
@@ -133,7 +124,7 @@ export function getPreferencesScript(): string {
                             input.type = 'checkbox';
                             input.checked = value;
                         } else if (field.type === 'number') {
-                            input.type = 'number'; input.min = field.min; input.max = field.max; input.step = ['ai.maxToolCalls','ai.logTailLines','ai.logTailKiB'].includes(field.key) ? '1' : 'any'; input.required = true;
+                            input.type = 'number'; input.min = field.min; input.max = field.max; input.step = 'any'; input.required = true;
                         } else if (field.type === 'hosts') {
                             input.rows = 3;
                         } else {
@@ -147,14 +138,6 @@ export function getPreferencesScript(): string {
                         const actions = node('div', 'dialog-actions');
                         actions.append(button(t('chooseServers'), 'secondary-button', () => vscode.postMessage({ command: 'configureServers' })),
                             button(t('addServer'), 'secondary-button', () => vscode.postMessage({ command: 'addServer' })));
-                        section.append(actions);
-                    }
-                    if (group === 'ai') {
-                        section.append(node('p', 'subtle settings-help', t('aiSettingsHelp')));
-                        const actions = node('div', 'dialog-actions');
-                        actions.append(node('span', 'key-status', hasKey ? t('keyConfigured') : t('keyMissing')),
-                            button(t('setKey'), 'secondary-button', () => keyAction('setAiKey')),
-                            button(t('deleteKey'), 'secondary-button', () => keyAction('deleteAiKey')));
                         section.append(actions);
                     }
                     root.append(section);
@@ -217,9 +200,6 @@ export function getPreferencesScript(): string {
                 if (message.type === 'update' && message.preferences) {
                     latest = message.preferences;
                     catalog = message.gpuCatalog || message.data || [];
-                    hasKey = Boolean(message.aiConfigured);
-                    const keyStatus = root.querySelector('.key-status');
-                    if (keyStatus) keyStatus.textContent = hasKey ? t('keyConfigured') : t('keyMissing');
                     // Never reconstruct an open form during metric refreshes.
                 }
                 if (message.type === 'preferencesResult') {
@@ -259,7 +239,6 @@ export function getDialogCss(): string {
         .settings-help, .dialog-actions { grid-column: 1 / -1; }
         .settings-help { margin: 0; line-height: 1.6; font-size: 12px; }
         .dialog-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-        .key-status { color: var(--vscode-descriptionForeground); font-size: 12px; }
         .text-button { color: var(--vscode-textLink-foreground, var(--vscode-focusBorder)); background: transparent; }
         .text-button:hover { background: var(--vscode-list-hoverBackground); }
         .dialog-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; border-top: 1px solid var(--vscode-widget-border); font-size: 12px; }

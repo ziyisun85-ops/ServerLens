@@ -2,7 +2,6 @@ import en = require('./locales/en.json');
 import zhCN = require('./locales/zh-CN.json');
 import lineIcons = require('./lineIcons.json');
 import { getDialogCss, getPreferencesScript } from './preferencesView';
-import { getAssistantCss, getAssistantScript } from './assistantView';
 
 const dashboardTranslations = { en, 'zh-CN': zhCN };
 
@@ -25,7 +24,6 @@ export function getDashboardScript(): string {
         const refreshMode = document.getElementById('refresh-mode');
         const refreshButton = document.getElementById('refresh-button');
         const settingsButton = document.getElementById('settings-button');
-        const assistantButton = document.getElementById('assistant-button');
         const minMemory = document.getElementById('min-memory');
         const minGpus = document.getElementById('min-gpus');
         const myTasksButton = document.getElementById('my-tasks-button');
@@ -39,8 +37,6 @@ export function getDashboardScript(): string {
         let refreshStatus = { state: 'idle', completed: 0, total: 0 };
         let visibleGpuCount = 0;
         const selectedTasks = new Map();
-        const taskEvidence = new Map();
-        const taskProgress = new Map();
         const taskText = (en, zh) => language === 'zh-CN' ? zh : en;
 
         const translations = ${JSON.stringify(dashboardTranslations)};
@@ -89,7 +85,6 @@ export function getDashboardScript(): string {
         function applyStaticLanguage() {
             document.documentElement.lang = language;
             settingsButton.replaceChildren(icon('settings-2'), document.createTextNode(t('settings')));
-            assistantButton.replaceChildren(icon('sparkles'), document.createTextNode(t('assistant')));
             refreshButton.replaceChildren(icon('refresh-cw'), document.createTextNode(t('refresh')));
             document.getElementById('min-memory-label').textContent = t('minFreeMemory');
             document.getElementById('min-gpus-label').textContent = t('matchingGpus');
@@ -135,7 +130,6 @@ export function getDashboardScript(): string {
 
         refreshButton.addEventListener('click', () => vscode.postMessage({ command: 'refresh' }));
         settingsButton.addEventListener('click', () => window.dispatchEvent(new Event('openPreferences')));
-        assistantButton.addEventListener('click', () => window.dispatchEvent(new Event('openAssistant')));
         refreshMode.addEventListener('click',()=>window.dispatchEvent(new CustomEvent('openPreferences',{detail:'refresh'})));
         searchInput.addEventListener('input', () => renderFleet());
         statusFilter.addEventListener('change', () => renderFleet());
@@ -466,9 +460,6 @@ export function getDashboardScript(): string {
             const title=node('div');title.id='gpu-details-title';title.append(node('strong','',(server.metadata?.alias||server.host)+' · GPU '+gpu.index),node('span','subtle block',gpu.name+' · '+gpu.memory.used+' / '+gpu.memory.total+' · '+gpu.utilization.gpu));
             const close=button('','secondary-button compact-button',closeInspector,t('close')+' (Esc)');close.setAttribute('aria-label',t('close'));close.append(icon('x'));
             header.append(title,close);inspector.append(header);
-            const actions=node('div','task-primary-actions');
-            const ask=(process)=>window.dispatchEvent(new CustomEvent('openAssistant',{detail:{host:server.host,uuid:gpu.uuid,pid:process?.pid,question:process?taskText('Identify this GPU task and inspect its launcher and progress.','查一下这个 GPU 任务的训练入口和进度。'):taskText('What is running on this GPU?','这张 GPU 在运行什么任务？')}}));
-            actions.append(button(taskText('Ask AI','问 AI'),'secondary-button compact-button',()=>ask(selectedTasks.get(key))),button(taskText('Notify when free','释放时提醒我'),'secondary-button compact-button',()=>{vscode.postMessage({command:'watchGpu',host:server.host,uuid:gpu.uuid});window.dispatchEvent(new CustomEvent('openAssistant',{detail:{host:server.host,uuid:gpu.uuid}}));}));inspector.append(actions);
             if(!gpu.processes.length&&!selectedTasks.has(key)){inspector.append(node('p','subtle',t('noProcesses')));return inspector;}
             const layout=node('div','task-inspector-layout');
             const list=node('div','process-scroll task-list');list.setAttribute('role','group');list.setAttribute('aria-label',taskText('GPU processes','GPU 进程'));
@@ -488,29 +479,8 @@ export function getDashboardScript(): string {
                 if(process.slurm)details.append(node('p','subtle','Slurm '+process.slurm.id+' · '+process.slurm.name+' · '+process.slurm.state));
                 details.append(node('pre','task-command',process.command||process.name));
                 const controls=node('div','dialog-actions');
-                controls.append(button(taskText('Trace task source','查询任务来源'),'secondary-button compact-button',()=>{taskEvidence.set(key+':'+process.pid,{loading:true});vscode.postMessage({command:'inspectTask',host:server.host,uuid:gpu.uuid,pid:process.pid});renderFleet();}),button(t('cmd'),'secondary-button compact-button',()=>vscode.postMessage({command:'copyAiText',text:process.command||process.name})),button('PID','secondary-button compact-button',()=>vscode.postMessage({command:'copyAiText',text:process.pid})),button(taskText('Ask AI about task','问 AI 分析任务'),'secondary-button compact-button',()=>ask(process)));
-                controls.firstElementChild.disabled=!live;inspector.append(node('span','subtle task-sample-time',taskText('GPU sample: ','GPU 采样：')+new Date(server.lastSuccessAt||server.collectedAt).toLocaleTimeString()));details.append(controls);
-                const evidence=taskEvidence.get(key+':'+process.pid);
-                if(evidence){
-                    if(evidence.loading)details.append(node('p','subtle',taskText('Tracing parent processes…','正在追查父进程…')));
-                    else if(evidence.error)details.append(node('p','task-ended',evidence.error));
-                    else {
-                        details.append(node('p','subtle',taskText('Task evidence: ','任务查询：')+new Date(evidence.collectedAt).toLocaleTimeString()));
-                        const chain=node('div','task-parent-chain');
-                        for(const parent of evidence.chain||[]) {const item=node('div','task-parent');item.append(node('strong','',parent.user+' · PID '+parent.pid+' → '+parent.ppid),node('code','block',parent.command),node('span','subtle block',parent.cwd||''));chain.append(item);}
-                        if(!chain.childNodes.length)chain.append(node('p','subtle',taskText('No accessible process evidence. The task may have exited or permission is missing.','没有可读取的进程信息：任务可能已退出或权限不足。')));
-                        details.append(chain);
-                        const paths=[...new Set((evidence.chain||[]).flatMap(p=>p.logs||[]))];
-                        for(const path of paths) {
-                            const log=node('div','task-parent');log.append(node('strong','',taskText('Task log','任务日志')),node('code','block',path));
-                            const progress=taskProgress.get(server.host+':'+path);
-                            if(progress){
-                                log.append(node('span','subtle block',taskText('Log updated: ','日志更新：')+new Date(progress.modifiedAt*1000).toLocaleString()),node('span','subtle block',taskText('Read at: ','已读取于：')+new Date(progress.collectedAt).toLocaleTimeString()+taskText(' · Interpretation in AI chat',' · 进度解读见 AI 对话')));
-                            } else log.append(node('span','subtle block',taskText('Ask AI to inspect progress; it will request log authorization if needed.','问 AI 查询进度，需要读取日志时会在对话中请求授权。')));
-                            details.append(log);
-                        }
-                    }
-                }
+                controls.append(button(t('cmd'),'secondary-button compact-button',()=>vscode.postMessage({command:'copyValue',kind:'command',host:server.host,uuid:gpu.uuid,pid:process.pid})),button('PID','secondary-button compact-button',()=>vscode.postMessage({command:'copyValue',kind:'pid',host:server.host,uuid:gpu.uuid,pid:process.pid})));
+                inspector.append(node('span','subtle task-sample-time',taskText('GPU sample: ','GPU 采样：')+new Date(server.lastSuccessAt||server.collectedAt).toLocaleTimeString()));details.append(controls);
             }
             layout.append(list,details);inspector.append(layout);return inspector;
         }
@@ -679,11 +649,6 @@ export function getDashboardScript(): string {
                 language = message.language === 'zh-CN' ? 'zh-CN' : 'en';
                 applyStaticLanguage();
                 showRefreshState(message.state || 'refreshing', message.completed || 0, message.total || 0);
-            } else if (message.type === 'taskProgress') {
-                taskProgress.set(message.host+':'+message.path,message);renderFleet();
-            } else if (message.type === 'taskEvidence') {
-                taskEvidence.set(message.host+':'+message.uuid+':'+message.pid,message.evidence||{error:message.error});
-                renderFleet();
             } else if (message.type === 'update') {
                 render(message);
             }
@@ -691,7 +656,6 @@ export function getDashboardScript(): string {
         applyStaticLanguage();
         refreshState.textContent = t('waiting');
         ${getPreferencesScript()}
-        ${getAssistantScript()}
         vscode.postMessage({ command: 'ready' });
     `;
 }
@@ -886,6 +850,5 @@ export function getDashboardCss(): string {
         }
         @media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }
         ${getDialogCss()}
-        ${getAssistantCss()}
     `;
 }

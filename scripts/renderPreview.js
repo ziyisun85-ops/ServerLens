@@ -110,7 +110,6 @@ const data = [
 const previewMessage = {
     type: 'update',
     preferences: { ...Object.fromEntries(preferenceFields.map(field => [field.key, field.default])), researchUser: 'alice' },
-    aiConfigured: false,
     title: 'GPU Fleet',
     data,
     settings: {
