@@ -325,7 +325,18 @@ export class MonitorService {
     private schedule(): void {
         this.clock.clearTimeout(this.timer);
         this.timer = undefined;
-        if (this.disposed || !this.isActive()) {
+        if (this.disposed) {
+            return;
+        }
+        let active: boolean;
+        try {
+            active = this.isActive();
+        } catch (error) {
+            this.log.error(`Reading settings failed: ${(error as Error).message}`);
+            this.timer = this.clock.setTimeout(() => this.tick(), 30_000);
+            return;
+        }
+        if (!active) {
             return;
         }
         const now = this.clock.now();
@@ -347,23 +358,29 @@ export class MonitorService {
         if (this.disposed) {
             return;
         }
-        this.syncHosts();
-        if (this.isActive()) {
-            const config = this.config();
-            const now = this.clock.now();
-            for (const host of this.order) {
-                const state = this.states.get(host);
-                if (!state || state.running || state.queued || state.nextRetryAt > now) {
-                    continue;
+        try {
+            this.syncHosts();
+            if (this.isActive()) {
+                const config = this.config();
+                const now = this.clock.now();
+                for (const host of this.order) {
+                    const state = this.states.get(host);
+                    if (!state || state.running || state.queued || state.nextRetryAt > now) {
+                        continue;
+                    }
+                    const metrics = this.dueMetrics(state, now, config);
+                    if (metrics.size) {
+                        this.enqueue(state, metrics, false);
+                    }
                 }
-                const metrics = this.dueMetrics(state, now, config);
-                if (metrics.size) {
-                    this.enqueue(state, metrics, false);
-                }
+                this.pump();
             }
-            this.pump();
+        } catch (error) {
+            this.log.error(`Scheduling failed: ${(error as Error).message}`);
+        } finally {
+            // Whatever happened in this round, keep the timer alive.
+            this.schedule();
         }
-        this.schedule();
     }
 
     private enqueue(state: HostState, metrics: Set<CollectMetric>, force: boolean): void {
@@ -386,7 +403,9 @@ export class MonitorService {
             job.state.queued = false;
             job.state.running = true;
             this.emitActivity();
-            void this.collect(job).finally(() => {
+            void this.collect(job).catch(error => {
+                this.log.error(`${job.state.host}: collection failed unexpectedly: ${(error as Error).message}`);
+            }).finally(() => {
                 this.active -= 1;
                 job.state.running = false;
                 if (job.state.pendingForce && !this.disposed && this.states.has(job.state.host)) {

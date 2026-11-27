@@ -6,6 +6,7 @@ import { MonitorService } from './monitorService';
 import { validateRemotePath } from './remoteScript';
 import { storageSettings } from './settings';
 import { formatBytes } from './format';
+import { plainText } from './log';
 
 interface TargetItem extends vscode.QuickPickItem {
     target?: StorageTarget;
@@ -95,10 +96,11 @@ export async function runStorageAnalysis(
         }
     });
     if (result.state === 'error') {
-        void vscode.window.showWarningMessage(`Storage scan on ${host} failed: ${result.error}`);
+        void vscode.window.showWarningMessage(`Storage scan on ${host} failed: ${plainText(result.error || 'unknown error')}`);
     } else if (result.state === 'done') {
         const top = result.entries[0];
-        void vscode.window.setStatusBarMessage(
-            `$(folder) ${target.label} on ${host}: ${formatBytes(result.totalKiB * 1024)}${top ? `, largest ${top.path}` : ''}`, 8000);
+        // Status bar text expands $(icon) syntax; remote folder names must not inject icons.
+        const largest = top ? `, largest ${top.path.replace(/\$\(/g, '$\u200b(')}` : '';
+        void vscode.window.setStatusBarMessage(`$(folder) ${target.label} on ${host}: ${formatBytes(result.totalKiB * 1024)}${largest}`, 8000);
     }
 }

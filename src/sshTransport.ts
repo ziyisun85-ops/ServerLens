@@ -320,8 +320,12 @@ export class SshTransport {
         });
     }
 
-    /** Asks the shared connection for a host to exit. Errors are ignored. */
-    closeMaster(host: string): Promise<void> {
+    /**
+     * Controls the shared connection for a host. 'exit' ends it at once (used when it is stuck);
+     * 'stop' only stops it from accepting new sessions, so commands that another VS Code window is
+     * running over it can finish, and it then exits on its own. Errors are ignored.
+     */
+    closeMaster(host: string, operation: 'exit' | 'stop' = 'exit'): Promise<void> {
         const directory = this.controlDirectoryCache?.directory;
         if (!directory || !isValidSshTarget(host)) {
             return Promise.resolve();
@@ -330,7 +334,7 @@ export class SshTransport {
         const args = [
             ...sshConfigArguments(settings.sshConfigPath),
             '-o', `ControlPath=${path.join(directory, '%C')}`,
-            '-O', 'exit', '--', host
+            '-O', operation, '--', host
         ];
         return new Promise(resolve => {
             let child: cp.ChildProcess;
@@ -361,7 +365,7 @@ export class SshTransport {
             this.log.info(`Closing ${hosts.length} shared SSH connection(s).`);
         }
         await Promise.race([
-            Promise.all(hosts.map(host => this.closeMaster(host))),
+            Promise.all(hosts.map(host => this.closeMaster(host, 'stop'))),
             new Promise(resolve => setTimeout(resolve, 3500))
         ]);
     }

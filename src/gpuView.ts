@@ -10,7 +10,7 @@ import { getPreferencesHtml } from './preferencesView';
 import { MonitorService } from './monitorService';
 import { configuration, readViewSettings, uiLanguage } from './settings';
 import {
-    copyToClipboard, editServerMetadata, isValidGpuId, openGpuTerminal, serverMetadata, toggleFavorite
+    copyToClipboard, editServerMetadata, isValidGpuId, isValidPid, openGpuTerminal, serverMetadata, toggleFavorite
 } from './serverActions';
 import { isValidSshTarget } from './sshTransport';
 
@@ -55,6 +55,8 @@ export async function showAvailableGpuQuickPick(context: vscode.ExtensionContext
 
 export class GpuViewPanel {
     private static readonly panels = new Set<GpuViewPanel>();
+    /** How often a dashboard script reported "ready" (it posts that as its last statement). */
+    static readyCount = 0;
     private readonly panel: vscode.WebviewPanel;
     private readonly host: string | undefined;
     private readonly context: vscode.ExtensionContext;
@@ -152,6 +154,7 @@ export class GpuViewPanel {
                 await this.monitor.refresh(this.host ? [this.host] : undefined);
                 break;
             case 'ready':
+                GpuViewPanel.readyCount += 1;
                 await this.publishCurrent();
                 break;
             case 'connect':
@@ -286,10 +289,11 @@ export class GpuViewPanel {
         let value = '';
         switch (payload.kind) {
             case 'ssh': value = `ssh ${host}`; break;
+            // Values come from the server and may be pasted into a shell: copy only well-formed ones.
             case 'cuda':
-                if (gpu) value = `export CUDA_DEVICE_ORDER=PCI_BUS_ID\nexport CUDA_VISIBLE_DEVICES=${gpu.uuid}`;
+                if (gpu && isValidGpuId(gpu.uuid)) value = `export CUDA_DEVICE_ORDER=PCI_BUS_ID\nexport CUDA_VISIBLE_DEVICES=${gpu.uuid}`;
                 break;
-            case 'pid': if (process) value = process.pid; break;
+            case 'pid': if (process && isValidPid(process.pid)) value = process.pid; break;
             case 'command': if (process) value = process.command; break;
         }
         await copyToClipboard(value);

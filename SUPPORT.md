@@ -20,4 +20,4 @@ Do not report vulnerabilities in a public issue. Follow [SECURITY.md](SECURITY.m
 
 ## Installation
 
-ServerLens is distributed as a VSIX package (`releases/serverlens-<version>.vsix`). It is not published on the Visual Studio Marketplace.
+Install ServerLens from the Visual Studio Marketplace (search for "ServerLens" in the Extensions view, or run `code --install-extension ziyisun85-ops.serverlens`). Each release on [GitHub Releases](https://github.com/ziyisun85-ops/ServerLens/releases) also has the `.vsix` package for offline installation.

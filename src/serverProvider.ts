@@ -48,13 +48,23 @@ export class GpuServerProvider implements vscode.TreeDataProvider<vscode.TreeIte
 
     public static getHosts(): SshHost[] {
         const config = vscode.workspace.getConfiguration('serverlens');
-        const configPath = config.get<string>('sshConfigPath') || '~/.ssh/config';
-        const targets = config.get<string[]>('targets') || [];
-        const additionalHosts = config.get<string[]>('additionalHosts') || [];
-        const ignoredHosts = config.get<string[]>('ignoredHosts') || [];
+        const configured = config.get<unknown>('sshConfigPath');
+        const configPath = typeof configured === 'string' && configured.trim() ? configured.trim() : '~/.ssh/config';
+        // Hand-edited settings may hold a string or other non-array value; ignore anything that is not a host list.
+        const list = (key: string) => {
+            const value = config.get<unknown>(key);
+            return Array.isArray(value) ? value.filter((host): host is string => typeof host === 'string' && host.trim() !== '').map(host => host.trim()) : [];
+        };
+        const targets = list('targets');
+        const additionalHosts = list('additionalHosts');
+        const ignoredHosts = list('ignoredHosts');
 
-        const parser = new SshConfigParser();
-        const allHosts = parser.parse(configPath);
+        let allHosts: SshHost[] = [];
+        try {
+            allHosts = new SshConfigParser().parse(configPath);
+        } catch {
+            // An unreadable SSH config (permissions, a directory) leaves only the explicitly listed hosts.
+        }
 
         const knownHosts = new Map(allHosts.map(host => [host.host, host]));
         let displayHosts = allHosts;

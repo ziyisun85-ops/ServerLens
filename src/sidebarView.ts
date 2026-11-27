@@ -18,6 +18,8 @@ type CardModel = ServerStatus & { storage?: StorageResult; refreshing?: boolean 
 
 export class SidebarViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
     static readonly viewType = 'serverlens.monitor';
+    /** How often the webview script reported "ready" (it posts that as its last statement). */
+    readyCount = 0;
     private view: vscode.WebviewView | undefined;
     private readonly posted = new Map<string, string>();
     private readonly disposables: vscode.Disposable[] = [];
@@ -181,6 +183,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider, vscode.D
         const host = isValidSshTarget(payload.host) ? payload.host : undefined;
         switch (payload.command) {
             case 'ready':
+                this.readyCount += 1;
                 this.posted.clear();
                 await this.publish(true);
                 break;

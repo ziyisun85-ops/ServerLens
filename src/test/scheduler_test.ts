@@ -273,8 +273,33 @@ async function testHostChangesAndDispose(): Promise<void> {
     assert.strictEqual(runner.calls.length, count, 'No timers survive dispose.');
 }
 
+async function testConfigErrorsKeepTheTimer(): Promise<void> {
+    const clock = new FakeClock();
+    const runner = new FakeRunner();
+    let broken = false;
+    const errors: string[] = [];
+    const log = { debug() {}, info() {}, warn() {}, error: (message: string) => { errors.push(message); } };
+    const service = new MonitorService(runner, () => {
+        if (broken) {
+            throw new Error('settings exploded');
+        }
+        return baseConfig();
+    }, log, clock);
+    service.setConsumerVisible('sidebar', true);
+    await clock.advance(100);
+    assert.strictEqual(runner.calls.length, 1);
+    broken = true;
+    await clock.advance(5_000);
+    assert.ok(errors.some(message => message.includes('settings exploded')), 'The failure is logged.');
+    broken = false;
+    await clock.advance(31_000);
+    assert.ok(runner.calls.length >= 2, 'Collection resumes once the settings can be read again.');
+    service.dispose();
+}
+
 async function main(): Promise<void> {
     await testIntervalsAndBatching();
+    await testConfigErrorsKeepTheTimer();
     await testCustomIntervals();
     await testNoOverlapAndManualRefresh();
     await testConcurrencyLimit();

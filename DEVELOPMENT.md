@@ -54,7 +54,7 @@ ServerLens 是面向 AI 科研人员的 VS Code 多服务器资源监控插件�
 | D2 | 移除 AI 助手、任务溯源、GPU 释放提醒及 markdown-it 依赖（用户已确认） | 需求未列出；这些模块会代用户在服务器上执行进程和日志查询，与“轻量、低资源占用”冲突。移除放在单独提交中，可从 git 历史恢复 |
 | D3 | 保留上游 git 历史；`upstream` 指向 GPU Fleet Viewer 且禁用 push；`origin` 指向 `git@github.com:ziyisun85-ops/ServerLens.git`，不推送 | 保留署名，方便以后合并上游修复，避免误推到原作者仓库 |
 | D4 | 新标识：包名 `serverlens`，publisher `ziyisun85-ops`，设置和命令前缀 `serverlens.*`，视图容器 `serverlens`。首次启动时把 `gpu-fleet-viewer.*` 的同名设置复制过来 | 与两个原插件同时安装也不冲突；老用户不用重新配置 |
-| D5 | 删除自动发布工作流（`release.yml`、`resolveRelease.sh`、`checkRelease.js`、`docs/PUBLISHING.md`），保留 CI | 原工作流在推送 main 时自动发布 Marketplace，需求要求未经允许不发布 |
+| D5 | 删除自动发布工作流（`release.yml`、`resolveRelease.sh`、`checkRelease.js`、`docs/PUBLISHING.md`），保留 CI | 原工作流在推送 main 时自动发布 Marketplace，需求要求未经允许不发布。用户要求发布后另建了 `release.yml`（见 D25），发布仍需手动勾选或显式开启 |
 | D6 | 连接复用用 OpenSSH ControlMaster：`ControlMaster=auto`、`ControlPersist`，控制套接字放在 `/tmp/serverlens-<uid>/%C`。目录权限 0700，使用前校验属主、类型和路径长度。Windows 版 OpenSSH 不支持，自动退回每次新建连接 | 继续使用系统 ssh，保留用户 config 的全部能力（ProxyJump、密钥、agent）。`/var/folders/...` 太长，会超过 Unix 套接字 104 字节的上限 |
 | D7 | 监控连接加 `-T -o ClearAllForwardings=yes -o ForwardAgent=no -o ForwardX11=no -o RemoteCommand=none -o RequestTTY=no -o PermitLocalCommand=no -o LogLevel=ERROR` | 监控连接不应携带用户 config 中的端口转发和交互设置（见 1.3 第 7 条） |
 | D8 | 远程脚本经 stdin 交给 `sh -s` 执行；脚本整体包在函数里，并以 `</dev/null` 调用；统一 `LC_ALL=C`；每段输出带随机 nonce 标记和退出码；存在 `timeout` 时每条命令都套上 | 与登录 shell 类型无关；`.bashrc` 的输出不会被误解析；不同语言环境输出一致；单个命令挂死不会拖住整次采集 |
@@ -72,6 +72,14 @@ ServerLens 是面向 AI 科研人员的 VS Code 多服务器资源监控插件�
 | D20 | 服务器超过 6 台时卡片默认折叠，用户展开后记住状态 | 开发时所用的 SSH 配置有 40 多台主机，全部展开过长 |
 | D21 | 容量单位默认 IEC（GiB/TiB，1024 进制），可切换为 SI | 与 `df -h` 和 nvidia-smi 的数值一致 |
 | D22 | 截图用 Chrome 无头模式渲染真实的 webview 代码和 VS Code 默认主题变量 | 开发期间没有在本机启动 VS Code 窗口 |
+| D23 | 推送到 GitHub 时合并仓库自带的初始提交（只有一行 README），快进推送，不强制推送；首次推送前把文档中的实验室主机名和本机细节换成中性描述（只改文档） | 公开仓库不应暴露内部基础设施命名 |
+| D24 | 发布前用工作流做一次审查：两路调研（市场规则、名称可用性）、三个审查视角（清单与市场页面、真实 VS Code 运行、安全与隐私），每个视角的发现再由独立的复核者尝试推翻。确认 15 项，其中 1 项经核实不成立（上游链接实际可用），其余 14 项已修复 | 首次公开发布，且此前未在真实 VS Code 中运行过 |
+| D25 | 发布方式：Trusted Publishing（OIDC，`vsce publish --oidc`），由 `release.yml` 在手动勾选或仓库变量 `MARKETPLACE_PUBLISH=true` 时执行；首个版本可在网页上传 VSIX。不使用 PAT | 全局 PAT 将停用（2027-01-27，部分文档写 2026-12-01），微软推荐 Trusted Publishing；仓库中不保存任何令牌 |
+| D26 | `@vscode/vsce` 升级到 4.1.x | `--oidc` 需要 4.1.0 或更高版本 |
+| D27 | `engines.vscode` 提高到 `^1.82.0`，`@types/vscode` 固定为 `~1.82.0` | webview 使用 CSS `color-mix()`，VS Code 1.80/1.81 的 Chromium 108 不支持；固定类型版本后，编译器会拒绝 1.82 之后才有的 API |
+| D28 | `activationEvents` 设为 `onStartupFinished`，激活后立即按设置启动调度 | 状态栏和 `pauseWhenHidden=false` 时的后台采集在启动后即可用；默认仍只在视图可见时采集 |
+| D29 | 标记为 Preview | Windows、真实的 quota/lfs 输出、Slurm 等尚未验证 |
+| D30 | 在 CI（Ubuntu 24.04 + xvfb）里用 `@vscode/test-electron` 在真实 VS Code 1.82.0 和最新稳定版中运行扩展测试 | 验证激活、命令、两个 webview 在真实 CSP 下加载、命令参数形态，而不需要在开发机上打开窗口 |
 
 ## 3. 架构
 
@@ -156,7 +164,13 @@ main </dev/null
 
 未完成和无法验证的内容见 [docs/TEST_REPORT.md](docs/TEST_REPORT.md) 第 6 节。
 
-## 6. 开发环境与命令
+## 6. 发布流程
+
+- `.github/workflows/ci.yml`：推送和 PR 时运行 lint、单元测试、jsdom 测试、`vsce package`，以及在真实 VS Code 1.82.0 和 stable 中的扩展测试。
+- `.github/workflows/release.yml`：推送 `v<版本>` 标签时运行全部测试并打包，把 VSIX 附到 GitHub Release；手动运行并勾选 “Publish” 或设置仓库变量 `MARKETPLACE_PUBLISH=true` 时，用 Trusted Publishing 发布到市场。
+- 一次性设置和逐步说明见 [docs/PUBLISHING.md](docs/PUBLISHING.md)。
+
+## 7. 开发环境与命令
 
 ```sh
 # 需要 Node.js 20 或更高版本（开发时使用 Node 24 LTS）
@@ -164,6 +178,7 @@ npm ci
 npm run compile     # TypeScript 编译到 out/
 npm run lint
 npm test            # 12 个测试脚本，含 jsdom 界面测试
+npm run test:vscode # 下载 VS Code 并在其中运行扩展测试（会打开一个窗口；CI 中在 xvfb 下运行）
 npm run package     # 生成 releases/serverlens-<version>.vsix
 ```
 
@@ -177,9 +192,9 @@ node scripts/integration.js <ssh-host> [<ssh-host>...] [--du <ssh-host>]
 
 `--du` 会对该主机的 Home 目录做一次深度 1、30 秒上限的 du 扫描，只在得到服务器使用者同意后使用。
 
-## 7. 后续可做
+## 8. 后续可做
 
 - 配额：XFS 项目配额、BeeGFS、GPFS。
 - 磁盘 inode 使用率（小文件数据集常见的“空间够但 inode 用尽”）。
 - 目录分析结果持久化，以及两次扫描之间的变化对比。
-- 在真实 VS Code 中做一次端到端检查（`@vscode/test-electron`），确认右键菜单和视图标题栏按钮。
+- 在 macOS/Windows 的 VS Code 中人工检查右键菜单、视图标题栏按钮和高对比度主题。

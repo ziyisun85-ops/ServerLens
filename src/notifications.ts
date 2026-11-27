@@ -8,7 +8,7 @@ import { MonitorService } from './monitorService';
 import { configuration, diskAlertSettings, readViewSettings } from './settings';
 import { serverMetadata } from './serverActions';
 import { formatBytes } from './format';
-import { Logger } from './log';
+import { Logger, plainText } from './log';
 
 const SNOOZE_MS = 24 * 60 * 60 * 1000;
 
@@ -73,7 +73,7 @@ export class FleetNotifier implements vscode.Disposable {
             powerWarningThreshold: settings.powerWarningThreshold
         });
         if (messages.length) {
-            void vscode.window.showWarningMessage(`ServerLens — ${messages.slice(0, 4).join(' · ')}`);
+            void vscode.window.showWarningMessage(`ServerLens — ${plainText(messages.slice(0, 4).join(' · '))}`);
         }
     }
 
@@ -93,7 +93,8 @@ export class FleetNotifier implements vscode.Disposable {
 
     private async showDiskNotification(alerts: DiskAlert[]): Promise<void> {
         const units = readViewSettings().byteUnits;
-        const describe = (alert: DiskAlert) => `${alert.label} ${alert.mountPoint} ${alert.usedPercent}% (${formatBytes(alert.availKiB * 1024, units)} free)`;
+        // Mount points come from the server: keep them from turning into notification links.
+        const describe = (alert: DiskAlert) => `${plainText(alert.label)} ${plainText(alert.mountPoint)} ${alert.usedPercent}% (${formatBytes(alert.availKiB * 1024, units)} free)`;
         const critical = alerts.some(alert => alert.level === 'critical');
         const text = alerts.length === 1
             ? `ServerLens: ${describe(alerts[0])} is ${critical ? 'almost full' : 'filling up'}.`
@@ -128,11 +129,18 @@ export class FleetNotifier implements vscode.Disposable {
             .filter(disk => disk.usedPercent >= settings.diskCriticalThreshold).map(disk => `${server.metadata?.alias || server.host} ${disk.mountPoint} ${disk.usedPercent}%`));
         const gpuText = summary.gpusTotal ? `GPU ${summary.gpusAvailable}/${summary.gpusTotal} free` : `${summary.serversOnline}/${summary.serversTotal} online`;
         this.statusBar.text = `$(server) ${gpuText}${fullDisks.length ? ` $(warning) ${fullDisks.length}` : ''}`;
-        const tooltip = new vscode.MarkdownString(
-            `**ServerLens**  \n${summary.serversOnline}/${summary.serversTotal} servers online  \n` +
-            (summary.gpusTotal ? `${summary.gpusAvailable}/${summary.gpusTotal} GPUs available · ${summary.memoryPercent}% GPU memory used  \n` : '') +
-            (fullDisks.length ? `Disks ≥ ${settings.diskCriticalThreshold}%: ${fullDisks.slice(0, 5).join(', ')}${fullDisks.length > 5 ? ', …' : ''}` : 'No disk above the critical threshold')
-        );
+        // Fixed text is Markdown; host aliases and mount points are appended as plain text.
+        const tooltip = new vscode.MarkdownString();
+        tooltip.appendMarkdown(`**ServerLens**  \n${summary.serversOnline}/${summary.serversTotal} servers online  \n`);
+        if (summary.gpusTotal) {
+            tooltip.appendMarkdown(`${summary.gpusAvailable}/${summary.gpusTotal} GPUs available · ${summary.memoryPercent}% GPU memory used  \n`);
+        }
+        if (fullDisks.length) {
+            tooltip.appendMarkdown(`Disks ≥ ${settings.diskCriticalThreshold}%: `);
+            tooltip.appendText(`${fullDisks.slice(0, 5).join(', ')}${fullDisks.length > 5 ? ', …' : ''}`);
+        } else {
+            tooltip.appendMarkdown('No disk above the critical threshold');
+        }
         this.statusBar.tooltip = tooltip;
     }
 

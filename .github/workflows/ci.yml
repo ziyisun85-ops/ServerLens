@@ -13,7 +13,6 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -27,8 +26,50 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Test
+      - name: Lint and test
         run: npm test
 
       - name: Verify extension package
         run: npx vsce package --out serverlens.vsix
+
+  vscode:
+    name: VS Code ${{ matrix.vscode }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # The minimum version from engines.vscode, and the current release.
+        vscode: ['1.82.0', 'stable']
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile
+        run: npm run compile
+
+      - name: Run the extension in VS Code ${{ matrix.vscode }}
+        shell: bash
+        env:
+          VSCODE_TEST_VERSION: ${{ matrix.vscode }}
+        run: |
+          set -o pipefail
+          command -v xvfb-run >/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q xvfb; }
+          xvfb-run -a npm run test:vscode 2>&1 | tee vscode-test.log
+
+      - name: Report failed checks as annotations
+        if: failure()
+        shell: bash
+        run: |
+          grep -E '✗|Error|rror:' vscode-test.log | head -20 | sed 's/%/%25/g' | while IFS= read -r line; do
+            echo "::error title=VS Code ${{ matrix.vscode }}::${line}"
+          done

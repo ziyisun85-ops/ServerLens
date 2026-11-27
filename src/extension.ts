@@ -14,7 +14,7 @@ import { runStorageAnalysis } from './storageCommand';
 import { configuration, readMonitorConfig, readViewSettings } from './settings';
 import { composeFleet } from './fleetModel';
 import { copyToClipboard, serverMetadata } from './serverActions';
-import { Logger } from './log';
+import { Logger, plainText } from './log';
 import { diskAlertKey } from './alerts';
 
 const configurationKeys = [
@@ -110,16 +110,36 @@ function createLogger(channel: vscode.LogOutputChannel): Logger {
     };
 }
 
-export async function activate(context: vscode.ExtensionContext): Promise<void> {
-    await migrateLegacySettings(context);
+/** Returned by activate() only when SERVERLENS_TEST=1, for the tests that run inside a real VS Code. */
+export interface ServerLensTestApi {
+    hosts(): string[];
+    snapshot(host: string): { error?: string; errorCategory?: string; lastSuccessAt?: number } | undefined;
+    sidebarReadyCount(): number;
+    dashboardReadyCount(): number;
+}
+
+export async function activate(context: vscode.ExtensionContext): Promise<ServerLensTestApi | undefined> {
     const channel = vscode.window.createOutputChannel('ServerLens', { log: true });
     const log = createLogger(channel);
+    try {
+        await migrateLegacySettings(context);
+    } catch (error) {
+        // settings.json may have unsaved edits or syntax errors; ServerLens works without the migration
+        // and tries again on the next start.
+        log.warn(`Could not copy settings from GPU Fleet Viewer: ${(error as Error).message}`);
+    }
 
     // Parsing ~/.ssh/config is cheap but runs on every scheduling round; keep it for a few seconds.
     let hostCache: { at: number; hosts: string[] } | undefined;
     const hosts = () => {
         if (!hostCache || Date.now() - hostCache.at > 5000) {
-            hostCache = { at: Date.now(), hosts: GpuServerProvider.getHosts().map(host => host.host) };
+            let list: string[] = hostCache?.hosts || [];
+            try {
+                list = GpuServerProvider.getHosts().map(host => host.host);
+            } catch (error) {
+                log.warn(`Could not read the server list: ${(error as Error).message}`);
+            }
+            hostCache = { at: Date.now(), hosts: list };
         }
         return hostCache.hosts;
     };
@@ -170,6 +190,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     const serverProvider = new GpuServerProvider(describeHost);
     const sidebar = new SidebarViewProvider(context, activeMonitor, activeStorage);
+    // A visible Servers tree also keeps data fresh, not only the Monitor view or a dashboard.
+    const serversView = vscode.window.createTreeView('serverlens.servers', { treeDataProvider: serverProvider });
     const notifier = new FleetNotifier(context, activeMonitor, log);
     let treeTimer: NodeJS.Timeout | undefined;
     const refreshTree = () => {
@@ -186,7 +208,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         sidebar,
         notifier,
         vscode.window.registerWebviewViewProvider(SidebarViewProvider.viewType, sidebar),
-        vscode.window.registerTreeDataProvider('serverlens.servers', serverProvider),
+        serversView,
+        serversView.onDidChangeVisibility(event => activeMonitor.setConsumerVisible('servers', event.visible)),
         activeMonitor.onDidChangeHost(refreshTree),
         activeMonitor.onDidChangeHosts(() => serverProvider.refresh()),
         vscode.commands.registerCommand('serverlens.refresh', async () => {
@@ -214,7 +237,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             const mount = item && typeof item === 'object' && 'mount' in item ? String((item as { mount: unknown }).mount) : '';
             if (host && mount.startsWith('/')) {
                 await notifier.tracker.mute([diskAlertKey(host, mount)]);
-                void vscode.window.showInformationMessage(`Disk alerts muted for ${mount} on ${host}.`);
+                void vscode.window.showInformationMessage(`Disk alerts muted for ${plainText(mount)} on ${host}.`);
             }
         }),
         vscode.commands.registerCommand('serverlens.resetDiskAlerts', async () => {
@@ -325,7 +348,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             }
         }
     );
+    activeMonitor.setConsumerVisible('servers', serversView.visible);
+    // Starts background collection when it is allowed without a visible view (pauseWhenHidden off).
+    activeMonitor.reconfigure();
     log.info(`ServerLens ${context.extension.packageJSON.version} activated; ${hosts().length} server(s) configured.`);
+    if (process.env.SERVERLENS_TEST === '1') {
+        return {
+            hosts: () => activeMonitor.hosts(),
+            snapshot: host => activeMonitor.getSnapshot(host),
+            sidebarReadyCount: () => sidebar.readyCount,
+            dashboardReadyCount: () => GpuViewPanel.readyCount
+        };
+    }
+    return undefined;
 
 }
 

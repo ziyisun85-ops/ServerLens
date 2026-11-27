@@ -1,8 +1,8 @@
 # Changelog
 
-## ServerLens 0.1.0 - 2026-11-27
+## ServerLens 0.1.0 - 2026-11-28
 
-First release of ServerLens, forked from GPU Fleet Viewer 1.4.3. Compared with GPU Fleet Viewer:
+First release of ServerLens (preview), forked from GPU Fleet Viewer 1.4.3. Requires VS Code 1.82 or later. Compared with GPU Fleet Viewer:
 
 ### Added
 - **Sidebar Monitor view** with one card per server: GPU utilization and memory, CPU, RAM, swap, storage bars, error banner with the last successful update, collapsible cards, details section, hover tooltips, right-click actions, narrow-width layout, light/dark/high-contrast themes, English and Chinese.
@@ -11,7 +11,8 @@ First release of ServerLens, forked from GPU Fleet Viewer 1.4.3. Compared with G
 - **Disk capacity alerts** that fire once per crossing, re-arm after a 2-point drop, survive reloads, and can be snoozed for 24 h or muted per disk.
 - **CPU usage** from `/proc/stat` deltas (user/system/iowait/steal), logical/physical/usable cores, load averages; **memory** from `MemAvailable` (estimated on old kernels) and **swap**.
 - **Storage analysis** on demand: presets for Home, Conda, pip, Hugging Face, PyTorch and `~/.cache`, configured folders or a custom path; `du` at low priority with a time limit, cancellable, one scan per server, read-only.
-- Status descriptions in the Servers tree; status bar shows full disks.
+- Status descriptions in the Servers tree; status bar shows full disks and appears from VS Code startup. A visible Servers tree also keeps data fresh.
+- Automated tests that run the extension inside a real VS Code (1.82.0 and stable) in CI, and a release workflow that attaches the VSIX to GitHub Releases and publishes to the Marketplace with Trusted Publishing (no stored token).
 
 ### Changed
 - One shared scheduler (MonitorService) for the sidebar, dashboards, tree and status bar instead of a polling loop per dashboard panel. GPU, CPU, memory and disk have separate intervals (5/5/5/60 s); metrics due together are batched into one SSH command; hosts never overlap; manual refreshes coalesce; failed hosts back off from 10 s to 2 min.
@@ -20,6 +21,11 @@ First release of ServerLens, forked from GPU Fleet Viewer 1.4.3. Compared with G
 - Servers without `nvidia-smi` are shown as CPU-only instead of failed; a broken or slow `nvidia-smi` no longer hides CPU, memory and disks. Slow `nvidia-smi` gets a longer limit on the next round, and slow hosts are polled less often.
 - A hung network filesystem no longer blocks disk data: after a `df` timeout only local filesystems are read.
 - GPU notifications and the status bar work without the dashboard being open.
+- Text that comes from a server (mount points, error messages) can no longer form clickable command links in notifications; copied GPU UUIDs and PIDs are validated before they reach the clipboard.
+- In Remote-SSH, WSL and container windows, "Open terminal" opens a local terminal, where the SSH aliases and keys live.
+- Closing one VS Code window no longer cuts the shared SSH connections that other windows are using.
+- `serverlens.sshConfigPath` can only be set in user settings, not by a workspace; `~` is expanded the same way for parsing and for `ssh -F`.
+- Activation no longer fails when settings.json has unsaved edits or a list setting has the wrong type.
 - New name, publisher, icons, settings/command prefix (`serverlens.*`); settings are copied once from `gpu-fleet-viewer.*`.
 
 ### Removed

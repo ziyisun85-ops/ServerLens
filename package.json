@@ -37,7 +37,7 @@
 		"slurm"
 	],
 	"engines": {
-		"vscode": "^1.80.0"
+		"vscode": "^1.82.0"
 	},
 	"categories": [
 		"Other",
@@ -46,7 +46,9 @@
 	"extensionKind": [
 		"ui"
 	],
-	"activationEvents": [],
+	"activationEvents": [
+		"onStartupFinished"
+	],
 	"main": "./out/extension.js",
 	"contributes": {
 		"viewsContainers": {
@@ -338,7 +340,8 @@
 				"serverlens.sshConfigPath": {
 					"type": "string",
 					"default": "~/.ssh/config",
-					"description": "Path to SSH config file"
+					"description": "Path to the SSH config file. Machine-scoped: workspace settings cannot change it.",
+					"scope": "machine"
 				},
 				"serverlens.targets": {
 					"type": "array",
@@ -426,7 +429,7 @@
 				"serverlens.pauseWhenHidden": {
 					"type": "boolean",
 					"default": true,
-					"description": "Pause automatic refresh while neither the ServerLens sidebar nor a dashboard is visible."
+					"description": "Pause automatic refresh while the Monitor view, the Servers tree and every dashboard are hidden. When off, ServerLens collects in the background from VS Code startup."
 				},
 				"serverlens.diskWarningThreshold": {
 					"type": "number",
@@ -678,22 +681,23 @@
 		"pretest": "npm run compile && npm run lint",
 		"lint": "eslint src --ext ts",
 		"test": "node scripts/checkLocales.js && node ./out/test/manual_test.js && node ./out/test/parsers_test.js && node ./out/test/collect_test.js && node ./out/test/transport_test.js && node ./out/test/scheduler_test.js && node ./out/test/storage_alerts_test.js && node scripts/checkRefresh.js && npm run preview:build && node scripts/checkWebview.js && node scripts/checkSidebar.js && node scripts/checkActivation.js",
-		"package": "vsce package --out releases/"
+		"package": "vsce package --out releases/",
+		"test:vscode": "node ./out/test/vscode/runTest.js"
 	},
 	"devDependencies": {
 		"@types/glob": "^8.1.0",
 		"@types/mocha": "^10.0.1",
 		"@types/node": "20.2.5",
-		"@types/vscode": "^1.80.0",
+		"@types/vscode": "~1.82.0",
 		"@typescript-eslint/eslint-plugin": "^5.59.8",
 		"@typescript-eslint/parser": "^5.59.8",
 		"@vscode/test-electron": "^2.3.2",
-		"@vscode/vsce": "^3.9.2",
+		"@vscode/vsce": "^4.1.1",
 		"eslint": "^8.41.0",
 		"glob": "^8.1.0",
 		"jsdom": "^30.0.1",
 		"mocha": "^10.2.0",
 		"typescript": "^5.1.3"
 	},
-	"dependencies": {}
+	"preview": true
 }

@@ -8,6 +8,10 @@ import {
 import { formatBytePair, formatBytes, formatDurationSeconds, percentCeil, usageLevel } from '../format';
 import { shellPath, shellQuote, splitScriptOutput, validateRemotePath, buildStopScanScript } from '../remoteScript';
 import { GpuMonitor } from '../gpuMonitor';
+import { plainText } from '../log';
+import { resolveSshConfigPath, sshConfigArguments } from '../sshConfig';
+import * as os from 'os';
+import * as path from 'path';
 
 const filters = { hiddenFsTypes: DEFAULT_HIDDEN_FS_TYPES, hiddenMountPatterns: DEFAULT_HIDDEN_MOUNT_PATTERNS, pinnedPaths: [] as string[] };
 
@@ -255,7 +259,28 @@ function testGpu(): void {
     assert.strictEqual(ok.gpus[0].processes[0].command, 'python eval.py');
 }
 
+function testSafeText(): void {
+    // VS Code turns [label](command:...) in notification text into a clickable link.
+    const linkPattern = /\[([^\]]+)\]\(((?:https?:\/\/|command:|file:)[^)\s]+)/;
+    const mount = '/home/m/[Show details](command:workbench.action.terminal.sendSequence?%7B%22text%22%3A%22id%5Cn%22%7D)';
+    assert.ok(linkPattern.test(mount));
+    assert.ok(!linkPattern.test(plainText(mount)), 'Remote text cannot form a notification link.');
+    assert.strictEqual(plainText(mount).replace(/\u200b/g, ''), mount, 'The visible text is unchanged.');
+    assert.strictEqual(plainText('/data'), '/data');
+
+    const home = os.homedir();
+    assert.strictEqual(resolveSshConfigPath('~/.ssh/lab'), path.join(home, '.ssh', 'lab'));
+    assert.strictEqual(resolveSshConfigPath('~\\.ssh\\lab'), path.join(home, '\\.ssh\\lab'), 'A Windows-style ~\\ prefix is expanded too.');
+    assert.strictEqual(resolveSshConfigPath('~'), home);
+    assert.strictEqual(resolveSshConfigPath('~alice/cfg'), '~alice/cfg', 'Other users\' ~name is left alone.');
+    assert.deepStrictEqual(sshConfigArguments('~/.ssh/config'), [], 'The default config needs no -F.');
+    assert.deepStrictEqual(sshConfigArguments(path.join(home, '.ssh', 'config')), []);
+    assert.deepStrictEqual(sshConfigArguments('~/.ssh/lab'), ['-F', path.join(home, '.ssh', 'lab')], 'ssh -F gets an expanded path.');
+    assert.deepStrictEqual(sshConfigArguments(undefined), []);
+}
+
 testCpu();
+testSafeText();
 testMemory();
 testSystem();
 testDisks();

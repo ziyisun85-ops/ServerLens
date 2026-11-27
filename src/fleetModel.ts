@@ -147,7 +147,8 @@ export function markDuplicateServers(data: ServerStatus[]): ServerStatus[] {
 /** Applies the per-host GPU visibility masks from settings (moved from the removed taskService.ts). */
 export function visibleFleet(data: ServerStatus[], masks: Record<string, string[]>): ServerStatus[] {
     return data.map(server => {
-        const selected = Object.prototype.hasOwnProperty.call(masks, server.host) ? masks[server.host] : undefined;
+        const entry = masks && typeof masks === 'object' && Object.prototype.hasOwnProperty.call(masks, server.host) ? masks[server.host] : undefined;
+        const selected = Array.isArray(entry) ? entry : undefined;
         const gpus = selected === undefined ? server.gpus : server.gpus.filter(g => selected.includes(g.index) || selected.includes(g.uuid));
         return { ...server, gpus, hiddenGpuCount: server.gpus.length - gpus.length };
     });

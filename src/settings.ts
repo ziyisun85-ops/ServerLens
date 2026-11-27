@@ -44,6 +44,12 @@ export function configuration(): vscode.WorkspaceConfiguration {
     return vscode.workspace.getConfiguration(SECTION);
 }
 
+/** Reads a list setting; hand-edited values that are not arrays of strings count as empty. */
+export function stringList(config: vscode.WorkspaceConfiguration, key: string): string[] {
+    const value = config.get<unknown>(key);
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
 function clamp(value: number | undefined, minimum: number, maximum: number, fallback: number): number {
     return typeof value === 'number' && Number.isFinite(value) ? Math.min(maximum, Math.max(minimum, value)) : fallback;
 }
@@ -87,9 +93,9 @@ export function readViewSettings(config = configuration()): ViewSettings {
 export function diskFilters(host: string, config = configuration()): DiskFilters {
     const showAll = config.get<boolean>('showAllFilesystems', false);
     return {
-        hiddenFsTypes: [...(showAll ? [] : DEFAULT_HIDDEN_FS_TYPES), ...entriesForHost(config.get<string[]>('hiddenFilesystemTypes', []), host)],
-        hiddenMountPatterns: [...(showAll ? [] : DEFAULT_HIDDEN_MOUNT_PATTERNS), ...entriesForHost(config.get<string[]>('hiddenMounts', []), host)],
-        pinnedPaths: entriesForHost(config.get<string[]>('pinnedMounts', []), host).filter(path => path.startsWith('/') || path.startsWith('~'))
+        hiddenFsTypes: [...(showAll ? [] : DEFAULT_HIDDEN_FS_TYPES), ...entriesForHost(stringList(config, 'hiddenFilesystemTypes'), host)],
+        hiddenMountPatterns: [...(showAll ? [] : DEFAULT_HIDDEN_MOUNT_PATTERNS), ...entriesForHost(stringList(config, 'hiddenMounts'), host)],
+        pinnedPaths: entriesForHost(stringList(config, 'pinnedMounts'), host).filter(path => path.startsWith('/') || path.startsWith('~'))
     };
 }
 
@@ -124,7 +130,7 @@ export function diskAlertSettings(config = configuration()): DiskAlertSettings {
 
 export function storageSettings(config = configuration()): StorageSettings {
     return {
-        paths: config.get<string[]>('storagePaths', []).filter(item => typeof item === 'string' && item.trim()),
+        paths: stringList(config, 'storagePaths').filter(item => item.trim()),
         depth: clamp(config.get<number>('storageScanDepth'), 1, 4, 2),
         timeoutSeconds: clamp(config.get<number>('storageScanTimeout'), 10, 600, 60)
     };

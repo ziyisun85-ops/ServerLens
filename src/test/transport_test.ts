@@ -121,8 +121,10 @@ async function main(): Promise<void> {
         await transport.dispose();
         await running;
         assert.ok(Date.now() - disposeStarted < 4000, 'Dispose does not wait for running commands.');
-        const exits = readLog(log).filter(entry => entry.args.includes('-O'));
-        assert.ok(exits.some(entry => entry.args.includes('ok')), 'Dispose closes every shared connection it opened.');
+        const exits = readLog(log).filter(entry => entry.args.includes('-O') && entry.args.includes('ok'));
+        assert.ok(exits.length > 0, 'Dispose releases every shared connection it used.');
+        assert.ok(exits.every(entry => entry.args.includes('stop')),
+            'Dispose uses -O stop so commands of other VS Code windows on the same connection can finish.');
         await rejectsWith(transport.exec('ok', 'true', options), 'cancelled');
 
         assert.strictEqual(classifySshFailure('ssh: connect to host x port 22: Operation timed out', 255).kind, 'timeout');

@@ -1,5 +1,6 @@
 // ServerLens: per-server actions shared by the dashboard and the sidebar (moved out of gpuView.ts).
 // Based on GPU Fleet Viewer's dashboard actions; modified for ServerLens (2026).
+import * as os from 'os';
 import * as vscode from 'vscode';
 import { ServerMetadata } from './fleetModel';
 import { sshConfigArguments } from './sshConfig';
@@ -10,6 +11,10 @@ export const METADATA_KEY = 'serverlens.serverMetadata';
 
 export function isValidGpuId(value: unknown): value is string {
     return typeof value === 'string' && /^[A-Za-z0-9_.:-]+$/.test(value);
+}
+
+export function isValidPid(value: unknown): value is string {
+    return typeof value === 'string' && /^[1-9]\d{0,9}$/.test(value);
 }
 
 export function serverMetadata(context: vscode.ExtensionContext): Record<string, ServerMetadata> {
@@ -51,7 +56,9 @@ export function openGpuTerminal(host: string, uuid: string): void {
     if (!isValidSshTarget(host) || !isValidGpuId(uuid)) {
         return;
     }
-    const terminal = vscode.window.createTerminal({ name: `GPU ${host}` });
+    // A file: cwd keeps the terminal on this machine in Remote-SSH/WSL/container windows, where the
+    // SSH alias and keys from the local ~/.ssh/config are available.
+    const terminal = vscode.window.createTerminal({ name: `GPU ${host}`, cwd: vscode.Uri.file(os.homedir()) });
     terminal.show();
     const quote = (value: string) => "'" + value.replace(/'/g, "'\\''") + "'";
     const configArgs = sshConfigArguments(configuration().get<string>('sshConfigPath'));

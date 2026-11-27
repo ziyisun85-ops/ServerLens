@@ -2,9 +2,21 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
+/**
+ * Expands a leading "~" (followed by "/" or "\\", or alone) to the home directory, the same way
+ * for parsing and for `ssh -F`, which does not expand "~" itself.
+ * Modified for ServerLens (2026): one resolver for the parser and the ssh arguments.
+ */
+export function resolveSshConfigPath(configPath: string): string {
+    return /^~(?=$|[\\/])/.test(configPath) ? path.join(os.homedir(), configPath.slice(1)) : configPath;
+}
+
 export function sshConfigArguments(configPath?: string): string[] {
-    return configPath && configPath !== '~/.ssh/config'
-        ? ['-F',configPath.startsWith('~/') ? path.join(os.homedir(),configPath.slice(2)) : configPath] : [];
+    if (!configPath) {
+        return [];
+    }
+    const resolved = resolveSshConfigPath(configPath);
+    return path.resolve(resolved) === path.join(os.homedir(), '.ssh', 'config') ? [] : ['-F', resolved];
 }
 
 export interface SshHost {
@@ -65,9 +77,6 @@ export class SshConfigParser {
     }
 
     private resolveHome(filepath: string): string {
-        if (filepath.startsWith('~')) {
-            return path.join(os.homedir(), filepath.slice(1));
-        }
-        return filepath;
+        return resolveSshConfigPath(filepath);
     }
 }

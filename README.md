@@ -57,23 +57,27 @@ ServerLens 只通过 SSH 执行只读命令，不需要在服务器上安装 Age
 
 - 仪表盘（编辑器标签页）保留 GPU Fleet Viewer 的全部功能：筛选、排序、进程检查器、收藏和分组、打开 GPU 终端、复制 `CUDA_VISIBLE_DEVICES`、设置对话框。服务器行新增 CPU、内存和最满的磁盘。
 - Servers 树保留原来的 Dashboard 入口、服务器列表和行内的 Connect 按钮，每台服务器后面显示状态，例如 `3/8 GPU free · /data 93%`。
-- 状态栏显示空闲 GPU 数和将满磁盘数，点击打开侧边栏。
+- 状态栏显示空闲 GPU 数和将满磁盘数，点击打开侧边栏。VS Code 启动后状态栏就会出现；默认在侧边栏、Servers 树或仪表盘可见时才采集数据（见 `serverlens.pauseWhenHidden`）。
 
 ## 安装
 
-1. 下载 `serverlens-0.1.0.vsix`（仓库的 `releases/` 目录或自行打包）。
-2. 在 VS Code 中打开扩展视图，点击右上角 `…` → **从 VSIX 安装…**，选择该文件。也可以在终端运行：
+**从扩展市场安装（推荐）：** 在 VS Code 扩展视图中搜索 `ServerLens`（发布者 `ziyisun85-ops`），点击安装。也可以在终端运行：
 
-   ```sh
-   code --install-extension serverlens-0.1.0.vsix
-   ```
+```sh
+code --install-extension ziyisun85-ops.serverlens
+```
 
-3. 点击活动栏中的 ServerLens 图标。
+**离线安装：** 从 [GitHub Releases](https://github.com/ziyisun85-ops/ServerLens/releases) 下载 `serverlens-<版本>.vsix`，在扩展视图右上角 `…` → **从 VSIX 安装…** 中选择它，或运行 `code --install-extension serverlens-<版本>.vsix`。
+
+安装后点击活动栏中的 ServerLens 图标。ServerLens 目前是预览版（Preview）。
+
+首次从一个新的发布者安装扩展时，VS Code 会询问是否信任该发布者，确认即可。
 
 ServerLens 与 GPU Server Viewer、GPU Fleet Viewer 使用不同的扩展 ID 和设置前缀，可以同时安装。首次启动时会把 `gpu-fleet-viewer.*`（或 `gpu-server-viewer.*`）中的同名设置复制一次。
 
 ### 前提条件
 
+- VS Code 1.82 或更高版本。
 - 本机有 OpenSSH 客户端（`ssh` 在 PATH 中）。
 - 能用密钥免密登录服务器（ServerLens 使用 `BatchMode=yes`，不会弹出密码输入）。可以先在终端执行一次 `ssh <host>`，确认主机密钥已受信任。
 - 服务器是 Linux，有 `/bin/sh` 和常见命令（`awk`、`df`、`ps`）。`nvidia-smi`、`timeout`、`quota`、`lfs`、`ionice` 有则使用，没有也能工作。
@@ -94,14 +98,14 @@ ServerLens 与 GPU Server Viewer、GPU Fleet Viewer 使用不同的扩展 ID 和
 
 | 设置 | 默认值 | 说明 |
 |---|---|---|
-| `serverlens.sshConfigPath` | `~/.ssh/config` | SSH 配置文件 |
+| `serverlens.sshConfigPath` | `~/.ssh/config` | SSH 配置文件；只能在用户设置中修改，工作区设置无效 |
 | `serverlens.targets` / `ignoredHosts` / `additionalHosts` | 空 | 监控哪些服务器（见上一节） |
 | `serverlens.refreshInterval` | `5` | GPU 刷新间隔（秒） |
 | `serverlens.cpuRefreshInterval` | `5` | CPU 刷新间隔（秒） |
 | `serverlens.memoryRefreshInterval` | `5` | 内存刷新间隔（秒） |
 | `serverlens.diskRefreshInterval` | `60` | 磁盘和配额刷新间隔（秒） |
 | `serverlens.autoRefresh` | `true` | 关闭后只在手动刷新时采集 |
-| `serverlens.pauseWhenHidden` | `true` | 侧边栏和仪表盘都不可见时暂停自动刷新 |
+| `serverlens.pauseWhenHidden` | `true` | Monitor 视图、Servers 树和仪表盘都不可见时暂停自动刷新；设为 `false` 时 VS Code 启动后即在后台采集 |
 | `serverlens.sshTimeout` | `8` | SSH 连接超时（秒）；每条远程命令也受此时间限制 |
 | `serverlens.maxConcurrentHosts` | `8` | 同时采集的服务器数 |
 | `serverlens.connectionReuse` | `true` | 每台服务器复用一个 SSH 连接（Windows 不支持，会自动关闭） |
@@ -147,7 +151,7 @@ ServerLens 与 GPU Server Viewer、GPU Fleet Viewer 使用不同的扩展 ID 和
 - 监控连接会清除 SSH config 里的端口转发（`ClearAllForwardings=yes`），并关闭 agent 和 X11 转发，不会占用你在 config 里为交互会话配置的 `RemoteForward` 端口。
 - ServerLens 从不读取或保存密码、私钥。它只调用系统的 `ssh`，认证完全交给 ssh 和 ssh-agent。日志（输出面板 “ServerLens”）只记录主机别名、耗时和错误类型；ssh 的报错在显示前会去掉私钥块和控制字符。
 - 采集失败的服务器按 10 秒、20 秒、40 秒……最长 2 分钟的间隔退避重试，手动刷新会立即重试。
-- 侧边栏和仪表盘都不可见时自动暂停采集（`pauseWhenHidden`）。
+- Monitor 视图、Servers 树和仪表盘都不可见时自动暂停采集（`pauseWhenHidden`）。
 
 ## 常见问题
 

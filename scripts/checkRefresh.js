@@ -14,6 +14,7 @@ async function main() {
     const values = new Map([['autoRefresh', false], ['sshConfigPath', sshConfig]]);
     const listeners = new Set();
     const terminalCommands = [];
+    const clipboardWrites = [];
     const configuration = {
         get: (key, fallback) => values.has(key) ? values.get(key) : fallback,
         update: async (key, value) => {
@@ -24,9 +25,10 @@ async function main() {
     const originalLoad = Module._load;
     Module._load = function (request, parent, isMain) {
         if (request === 'vscode') return {
-            window: { createTerminal: () => ({ show() {}, sendText: (command, execute) => terminalCommands.push({ command, execute }) }), setStatusBarMessage() {} },
+            window: { createTerminal: options => ({ show() {}, sendText: (command, execute) => terminalCommands.push({ command, execute, cwd: options.cwd }) }), setStatusBarMessage() {} },
+            Uri: { file: fsPath => ({ scheme: 'file', fsPath }) },
             TreeItem: class {}, ThemeIcon: class {}, ThemeColor: class {}, EventEmitter: class { constructor() { this.event = () => ({ dispose() {} }); } fire() {} },
-            TreeItemCollapsibleState: { None: 0 }, ConfigurationTarget: { Global: 1 }, env: { language: 'en', clipboard: { writeText: async () => undefined } },
+            TreeItemCollapsibleState: { None: 0 }, ConfigurationTarget: { Global: 1 }, env: { language: 'en', clipboard: { writeText: async value => { clipboardWrites.push(value); } } },
             workspace: {
                 getConfiguration: () => configuration,
                 onDidChangeConfiguration: callback => { listeners.add(callback); return { dispose: () => listeners.delete(callback) }; }
@@ -115,6 +117,18 @@ async function main() {
         assert.ok(terminalCommands[0].command.includes('-F') && terminalCommands[0].command.includes(sshConfig), 'Prepared terminals honour the SSH config.');
         assert.ok(terminalCommands[0].command.includes('CUDA_VISIBLE_DEVICES=GPU-demo-1'));
         assert.strictEqual(terminalCommands[0].execute, false, 'Research commands are never executed automatically.');
+        assert.strictEqual(terminalCommands[0].cwd.scheme, 'file', 'GPU terminals stay on the local machine in remote windows.');
+        // Values from a server end up in the clipboard and may be pasted into a shell: only well-formed ones are copied.
+        panel.lastData = [{ host: 'lab-node', collectedAt: Date.now(), latencyMs: 1, stale: false, gpus: [
+            { uuid: 'GPU-1;curl x|sh', processes: [{ pid: '1; rm -rf ~', command: 'python' }] },
+            { uuid: 'GPU-ok-2', processes: [{ pid: '4242', command: 'python train.py' }] }
+        ] }];
+        await panel.copyRequestedValue({ host: 'lab-node', uuid: 'GPU-1;curl x|sh', kind: 'cuda' });
+        await panel.copyRequestedValue({ host: 'lab-node', uuid: 'GPU-1;curl x|sh', pid: '1; rm -rf ~', kind: 'pid' });
+        assert.deepStrictEqual(clipboardWrites, [], 'A malformed GPU UUID or PID from the server is not copied.');
+        await panel.copyRequestedValue({ host: 'lab-node', uuid: 'GPU-ok-2', kind: 'cuda' });
+        await panel.copyRequestedValue({ host: 'lab-node', uuid: 'GPU-ok-2', pid: '4242', kind: 'pid' });
+        assert.deepStrictEqual(clipboardWrites, ['export CUDA_DEVICE_ORDER=PCI_BUS_ID\nexport CUDA_VISIBLE_DEVICES=GPU-ok-2', '4242']);
         await panel.handleMessage({ command: 'openGpuTerminal', host: '-oProxyCommand=x', uuid: 'GPU-demo-1' });
         assert.strictEqual(terminalCommands.length, 1, 'Invalid hosts are ignored.');
 

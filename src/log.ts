@@ -32,3 +32,13 @@ export function sanitizeDiagnostic(text: string, maxLength = 400): string {
         .join(' | ');
     return printable.length > maxLength ? printable.slice(0, maxLength - 1) + '…' : printable;
 }
+
+/**
+ * Makes remote text safe for VS Code notifications, which turn `[label](command:...)` into
+ * clickable links. A zero-width space after every `]` keeps the text readable but breaks the
+ * link syntax, so a mount point or error message from a server cannot become a command link.
+ */
+export function plainText(text: string): string {
+    return String(text).replace(/\]/g, ']\u200b');
+}
+

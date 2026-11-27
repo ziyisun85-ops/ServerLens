@@ -16,6 +16,7 @@ function createVscodeMock(state) {
         get: (key, fallback) => Object.prototype.hasOwnProperty.call(sectionValues(section), key) ? sectionValues(section)[key] : fallback,
         inspect: key => ({ globalValue: sectionValues(section)[key] }),
         update: async (key, value) => {
+            if (state.failUpdates) throw new Error('Unable to write into user settings because the file has unsaved changes.');
             sectionValues(section)[key] = value;
             state.configListeners.forEach(listener => listener({ affectsConfiguration: prefix => `${section}.${key}`.startsWith(prefix) }));
         }
@@ -24,8 +25,12 @@ function createVscodeMock(state) {
         EventEmitter, Disposable: class { constructor(fn) { this.dispose = fn; } },
         TreeItem: class { constructor(label, collapsibleState) { this.label = label; this.collapsibleState = collapsibleState; } },
         ThemeIcon: class { constructor(id, color) { this.id = id; this.color = color; } }, ThemeColor: class { constructor(id) { this.id = id; } },
-        MarkdownString: class { constructor(value) { this.value = value; } },
-        Uri: { joinPath: (...parts) => parts.join('/') },
+        MarkdownString: class {
+            constructor(value = '') { this.value = value; this.texts = []; }
+            appendMarkdown(value) { this.value += value; return this; }
+            appendText(value) { this.texts.push(value); this.value += value.replace(/[\\`*_{}[\]()#+\-.!<>]/g, '\\$&'); return this; }
+        },
+        Uri: { joinPath: (...parts) => parts.join('/'), file: fsPath => ({ scheme: 'file', fsPath }) },
         TreeItemCollapsibleState: { None: 0 }, ViewColumn: { One: 1 }, ConfigurationTarget: { Global: 1 }, StatusBarAlignment: { Left: 1 },
         ProgressLocation: { Notification: 15 }, QuickPickItemKind: { Separator: -1 },
         env: { language: 'zh-cn', clipboard: { writeText: async value => { state.clipboard = value; } } },
@@ -34,6 +39,12 @@ function createVscodeMock(state) {
             createStatusBarItem: () => { const item = { show() { item.visible = true; }, hide() { item.visible = false; }, dispose() {} }; state.statusBar = item; return item; },
             registerWebviewViewProvider: (id, provider) => { state.views[id] = provider; return disposable(); },
             registerTreeDataProvider: (id, provider) => { state.trees[id] = provider; return disposable(); },
+            createTreeView: (id, options) => {
+                state.trees[id] = options.treeDataProvider;
+                const view = { visible: false, visibilityListeners: [], onDidChangeVisibility: listener => { view.visibilityListeners.push(listener); return disposable(); }, dispose() {} };
+                state.treeViews[id] = view;
+                return view;
+            },
             createWebviewPanel: () => {
                 const panel = { visible: true, title: '', webview: { html: '', postMessage: async message => state.panelMessages.push(message), onDidReceiveMessage: disposable },
                     onDidDispose: callback => { panel.disposeCallback = callback; return disposable(); }, onDidChangeViewState: disposable, reveal() {},
@@ -63,7 +74,8 @@ async function main() {
     fs.writeFileSync(sshConfig, 'Host ignored-by-targets\n  HostName 127.0.0.1\n');
     const state = {
         config: { 'gpu-fleet-viewer': { targets: ['gpu-01.invalid'], refreshInterval: 7 }, serverlens: { sshConfigPath: sshConfig, autoRefresh: false, connectionReuse: false } },
-        configListeners: [], commands: new Map(), executed: [], views: {}, trees: {}, panels: [], panelMessages: [], messages: [], log: []
+        configListeners: [], commands: new Map(), executed: [], views: {}, trees: {}, treeViews: {}, panels: [], panelMessages: [], messages: [], log: [],
+        failUpdates: false
     };
     const vscode = createVscodeMock(state);
     const originalLoad = Module._load;
@@ -84,7 +96,7 @@ async function main() {
         const contributed = manifest.contributes.commands.map(command => command.command).sort();
         const registered = Array.from(state.commands.keys()).sort();
         assert.deepStrictEqual(registered, contributed, 'Every contributed command is registered and nothing else.');
-        assert.ok(state.views['serverlens.monitor'] && state.trees['serverlens.servers']);
+        assert.ok(state.views['serverlens.monitor'] && state.trees['serverlens.servers'] && state.treeViews['serverlens.servers']);
         assert.ok(manifest.contributes.views.serverlens.some(view => view.id === 'serverlens.monitor' && view.type === 'webview'));
         assert.strictEqual(state.statusBar.visible, true);
 
@@ -139,6 +151,24 @@ async function main() {
         await extension.deactivate();
         for (const item of context.subscriptions) item.dispose();
         assert.strictEqual(state.panels.every(panel => panel.disposeCallback), true);
+
+        // A settings.json with unsaved edits makes config.update() reject, and hand-edited settings may
+        // have the wrong type. Neither may stop activation (all commands and views must still register).
+        state.failUpdates = true;
+        state.commands.clear();
+        state.config['gpu-fleet-viewer'] = { refreshInterval: 9 };
+        state.config.serverlens = { sshConfigPath: path.join(directory, 'missing-dir', 'nope'), autoRefresh: false, connectionReuse: false,
+            targets: 'not-a-list', additionalHosts: 42, hiddenMounts: 7, pinnedMounts: 'x', visibleGpus: null };
+        const freshStore = new Map();
+        const secondContext = { ...context, subscriptions: [], globalState: { get: (key, fallback) => freshStore.has(key) ? freshStore.get(key) : fallback, update: async (key, value) => { freshStore.set(key, value); } } };
+        await extension.activate(secondContext);
+        assert.deepStrictEqual(Array.from(state.commands.keys()).sort(), contributed, 'Activation completes even when migration and settings are broken.');
+        assert.ok(state.log.some(line => /Could not copy settings/.test(line)), 'The migration failure is logged.');
+        assert.notStrictEqual(freshStore.get('serverlens.legacySettingsMigrated'), true, 'A failed migration is retried next time.');
+        await state.commands.get('serverlens.refresh')();
+        state.treeViews['serverlens.servers'].visibilityListeners.forEach(listener => listener({ visible: true }));
+        await extension.deactivate();
+        for (const item of secondContext.subscriptions) item.dispose();
         console.log('Activation: commands registered, settings migrated, sidebar view, dashboard, context-menu commands, reconfiguration and deactivate passed.');
     } finally {
         fs.rmSync(directory, { recursive: true, force: true });
