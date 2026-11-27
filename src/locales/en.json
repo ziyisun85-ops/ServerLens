@@ -203,5 +203,6 @@
   "sb_coresTitle": "Cores",
   "sb_cpuTime": "CPU time",
   "sb_cacheTitle": "Cache",
-  "sb_hostname": "Hostname"
+  "sb_hostname": "Hostname",
+  "sb_refreshing": "Refreshing…"
 }

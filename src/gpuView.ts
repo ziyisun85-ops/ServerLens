@@ -66,6 +66,7 @@ export class GpuViewPanel {
     private disposed = false;
     private lastData: ServerStatus[] = [];
     private publishTimer: NodeJS.Timeout | undefined;
+    private lastRefreshState = '';
 
     private constructor(panel: vscode.WebviewPanel, context: vscode.ExtensionContext, monitor: MonitorService, host?: string) {
         this.panel = panel;
@@ -149,12 +150,15 @@ export class GpuViewPanel {
         }
         const payload = message as Record<string, unknown>;
         switch (payload.command) {
-            case 'refresh':
+            case 'refresh': {
+                const done = this.monitor.refresh(this.host ? [this.host] : undefined);
                 await this.postRefreshState();
-                await this.monitor.refresh(this.host ? [this.host] : undefined);
+                await done;
                 break;
+            }
             case 'ready':
                 GpuViewPanel.readyCount += 1;
+                this.lastRefreshState = '';
                 await this.publishCurrent();
                 break;
             case 'connect':
@@ -226,8 +230,11 @@ export class GpuViewPanel {
     private refreshPayload() {
         const activity = this.monitor.activity();
         const config = configuration();
+        // Only refreshes the user asked for count as "refreshing"; background rounds run all the time
+        // and would otherwise keep the spinner going forever with many servers.
+        const manual = this.monitor.manualHosts();
         const total = this.host ? 1 : activity.total;
-        const pending = this.host ? Number(activity.running + activity.queued > 0) : activity.running + activity.queued;
+        const pending = this.host ? Number(manual.includes(this.host)) : manual.length;
         return {
             active: pending > 0,
             completed: Math.max(0, total - pending),
@@ -242,13 +249,19 @@ export class GpuViewPanel {
             return;
         }
         const refresh = this.refreshPayload();
-        await this.panel.webview.postMessage({
+        const message = {
             type: 'refreshState',
             state: refresh.active ? 'refreshing' : 'idle',
             completed: refresh.completed,
             total: refresh.total,
             language: uiLanguage()
-        });
+        };
+        const key = JSON.stringify(message);
+        if (key === this.lastRefreshState) {
+            return;
+        }
+        this.lastRefreshState = key;
+        await this.panel.webview.postMessage(message);
     }
 
     private async publishCurrent(): Promise<void> {

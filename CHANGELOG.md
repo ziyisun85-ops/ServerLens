@@ -1,8 +1,14 @@
 # Changelog
 
+## ServerLens 0.1.2 - 2026-11-28
+
+- Refresh indicators spin only for refreshes you start (the Refresh button, a card's refresh icon, Retry). Background refreshes run continuously with many servers and now only update the "Updated" time, instead of keeping the icons spinning.
+- Spinning icons no longer restart on every update and always stop at the end of a turn, so they no longer jitter. Applies to the sidebar and the dashboard.
+- A per-server dashboard no longer shows "Refreshing" while other servers are being collected.
+
 ## ServerLens 0.1.1 - 2026-11-28
 
-First version published to the Visual Studio Marketplace. The extension code is the same as 0.1.0 (see below).
+The extension code is the same as 0.1.0 (see below).
 
 - The 0.1.0 package on GitHub Releases accidentally contained a CI test log (`vscode-test.log`). The release workflow now writes the log outside the package folder, `*.log` is excluded from packaging, and CI and the release workflow fail if the package contains anything other than the runtime files.
 - Release workflow: artifact actions updated to v7 (Node 24).

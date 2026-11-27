@@ -203,5 +203,6 @@
   "sb_coresTitle": "核心",
   "sb_cpuTime": "CPU 占比",
   "sb_cacheTitle": "缓存",
-  "sb_hostname": "主机名"
+  "sb_hostname": "主机名",
+  "sb_refreshing": "刷新中…"
 }

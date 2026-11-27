@@ -159,7 +159,7 @@ async function testConcurrencyLimit(): Promise<void> {
     service.setConsumerVisible('sidebar', true);
     await clock.advance(100);
     assert.strictEqual(runner.calls.length, 2, 'At most maxConcurrentHosts collections run at once.');
-    assert.deepStrictEqual(service.activity(), { running: 2, queued: 3, total: 5 });
+    assert.deepStrictEqual(service.activity(), { running: 2, queued: 3, total: 5, manual: 0 }, 'Background rounds are not user refreshes.');
     runner.calls[0].resolve();
     await flush();
     assert.strictEqual(runner.calls.length, 3);
@@ -273,6 +273,34 @@ async function testHostChangesAndDispose(): Promise<void> {
     assert.strictEqual(runner.calls.length, count, 'No timers survive dispose.');
 }
 
+async function testManualRefreshTracking(): Promise<void> {
+    const clock = new FakeClock();
+    const runner = new FakeRunner();
+    runner.autoResolve = false;
+    const service = new MonitorService(runner, () => baseConfig({ hosts: ['a', 'b'] }), undefined, clock);
+    const activity: number[] = [];
+    service.onDidChangeActivity(value => activity.push(value.manual));
+    service.setConsumerVisible('sidebar', true);
+    await clock.advance(100);
+    assert.deepStrictEqual(service.manualHosts(), [], 'Scheduled rounds never show as a user refresh.');
+    const done = service.refresh(['b']);
+    assert.deepStrictEqual(service.manualHosts(), ['b'], 'A user refresh is tracked from the moment it is requested.');
+    assert.strictEqual(service.activity().manual, 1);
+    assert.ok(activity.includes(1), 'Requesting a refresh notifies the views even while the host is busy.');
+    for (const call of runner.calls) {
+        call.resolve();
+    }
+    await flush();
+    assert.deepStrictEqual(service.manualHosts(), ['b'], 'The refresh queued behind the running round is still pending.');
+    for (const call of runner.calls.slice(2)) {
+        call.resolve();
+    }
+    await done;
+    assert.deepStrictEqual(service.manualHosts(), [], 'It clears once the requested collection has finished.');
+    assert.strictEqual(activity.at(-1), 0);
+    service.dispose();
+}
+
 async function testConfigErrorsKeepTheTimer(): Promise<void> {
     const clock = new FakeClock();
     const runner = new FakeRunner();
@@ -299,6 +327,7 @@ async function testConfigErrorsKeepTheTimer(): Promise<void> {
 
 async function main(): Promise<void> {
     await testIntervalsAndBatching();
+    await testManualRefreshTracking();
     await testConfigErrorsKeepTheTimer();
     await testCustomIntervals();
     await testNoOverlapAndManualRefresh();

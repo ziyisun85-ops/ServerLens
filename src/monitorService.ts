@@ -91,6 +91,8 @@ export interface MonitorActivity {
     running: number;
     queued: number;
     total: number;
+    /** Hosts with a refresh the user asked for that has not finished yet. Background rounds do not count. */
+    manual: number;
 }
 
 function errorCategory(error: unknown): ServerErrorCategory {
@@ -110,6 +112,8 @@ export class MonitorService {
     private readonly gpuParser = new GpuMonitor();
     private readonly consumers = new Map<string, boolean>();
     private readonly queue: Job[] = [];
+    /** Hosts whose user-requested refresh is still pending (only these show a progress spinner). */
+    private readonly manual = new Set<string>();
     private timer: unknown;
     private active = 0;
     private disposed = false;
@@ -155,15 +159,12 @@ export class MonitorService {
     }
 
     activity(): MonitorActivity {
-        return { running: this.active, queued: this.queue.length, total: this.order.length };
+        return { running: this.active, queued: this.queue.length, total: this.order.length, manual: this.manual.size };
     }
 
-    /** Hosts that are collecting or waiting for a slot. */
-    busyHosts(): string[] {
-        return this.order.filter(host => {
-            const state = this.states.get(host);
-            return Boolean(state && (state.running || state.queued));
-        });
+    /** Hosts with a pending user-requested refresh, in configured order. */
+    manualHosts(): string[] {
+        return this.order.filter(host => this.manual.has(host));
     }
 
     /** Views report their visibility; with pauseWhenHidden, nothing runs while all are hidden. */
@@ -195,6 +196,7 @@ export class MonitorService {
         this.syncHosts();
         const targets = (hosts || this.order).map(host => this.states.get(host)).filter((state): state is HostState => Boolean(state));
         const waits = targets.map(state => new Promise<void>(resolve => {
+            this.manual.add(state.host);
             state.waiters.push(resolve);
             const queuedJob = this.queue.find(job => job.state === state);
             if (queuedJob) {
@@ -207,6 +209,7 @@ export class MonitorService {
             }
         }));
         this.pump();
+        this.emitActivity();
         return Promise.all(waits).then(() => undefined);
     }
 
@@ -217,6 +220,7 @@ export class MonitorService {
         this.disposed = true;
         this.clock.clearTimeout(this.timer);
         this.queue.length = 0;
+        this.manual.clear();
         for (const state of this.states.values()) {
             state.abort?.abort();
             state.waiters.splice(0).forEach(resolve => resolve());
@@ -256,6 +260,7 @@ export class MonitorService {
         }
         for (const [host, state] of this.states) {
             if (!hosts.includes(host)) {
+                this.manual.delete(host);
                 state.abort?.abort();
                 state.waiters.splice(0).forEach(resolve => resolve());
                 this.states.delete(host);
@@ -412,6 +417,7 @@ export class MonitorService {
                     job.state.pendingForce = false;
                     this.enqueue(job.state, new Set(METRICS), true);
                 } else {
+                    this.manual.delete(job.state.host);
                     job.state.waiters.splice(0).forEach(resolve => resolve());
                 }
                 this.emitActivity();

@@ -118,9 +118,29 @@ async function main() {
     assert.deepStrictEqual(clone(messages().at(-1)), { command: 'refresh', host: 'h20-3' });
     card('cpu-node-01').querySelector('.icon-button.refresh').click();
     assert.deepStrictEqual(clone(messages().at(-1)), { command: 'refresh', host: 'cpu-node-01' });
-    await send({ type: 'activity', activity: { running: 1, queued: 0, total: 6 }, refreshing: ['cpu-node-01'] });
-    assert.ok(card('cpu-node-01').classList.contains('refreshing'));
+    // Background rounds run constantly with many servers: they must not spin anything.
+    const topIcon = document.querySelector('#refresh-state .icon');
+    await send({ type: 'activity', activity: { running: 5, queued: 3, total: 6, manual: 0 }, refreshing: [] });
+    assert.ok(!document.getElementById('refresh-state').classList.contains('busy'), 'Background collection does not spin the top icon.');
+    assert.strictEqual(document.querySelectorAll('.card.refreshing').length, 0, 'Background collection does not spin any card.');
+    await send({ type: 'activity', activity: { running: 1, queued: 0, total: 6, manual: 1 }, refreshing: ['cpu-node-01'] });
+    assert.ok(card('cpu-node-01').classList.contains('refreshing'), 'A refresh the user asked for spins its card.');
     assert.ok(document.getElementById('refresh-state').classList.contains('busy'));
+    assert.match(document.getElementById('refresh-state').textContent, /Refreshing/);
+    const refreshingServer = clone(sample.servers[2]);
+    refreshingServer.refreshing = true;
+    for (let round = 0; round < 5; round += 1) {
+        await send({ type: 'state', servers: [refreshingServer], order: sample.order });
+    }
+    assert.strictEqual(document.querySelector('#refresh-state .icon'), topIcon, 'Updates never replace the spinning icon (that restarted its rotation).');
+    const cardIcon = card('cpu-node-01').querySelector('.icon-button.refresh .icon');
+    await send({ type: 'activity', activity: { running: 0, queued: 0, total: 6, manual: 0 }, refreshing: [] });
+    assert.ok(card('cpu-node-01').classList.contains('refreshing'), 'A finished refresh keeps turning to the end of the current turn...');
+    assert.strictEqual(card('cpu-node-01').querySelector('.icon-button.refresh .icon'), cardIcon, 'The card icon is not recreated either.');
+    await tick(1300);
+    assert.ok(!card('cpu-node-01').classList.contains('refreshing'), '...and then stops.');
+    assert.ok(!document.getElementById('refresh-state').classList.contains('busy'));
+    assert.match(document.getElementById('refresh-state').textContent, /Updated/);
 
     const hostile = clone(sample.servers[2]);
     hostile.metadata = { alias: '<img src=x onerror="window.__pwned=1">' };

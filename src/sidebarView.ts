@@ -26,6 +26,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider, vscode.D
     private viewDisposables: vscode.Disposable[] = [];
     private timer: NodeJS.Timeout | undefined;
     private fullPending = false;
+    private lastActivityKey = '';
 
     constructor(
         private readonly context: vscode.ExtensionContext,
@@ -116,7 +117,8 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider, vscode.D
 
     private cards(): CardModel[] {
         const settings = readViewSettings();
-        const busy = new Set(this.monitor.busyHosts());
+        // Only refreshes the user asked for show a spinner; background rounds stay quiet.
+        const busy = new Set(this.monitor.manualHosts());
         return composeFleet(this.monitor.getSnapshots(), settings, serverMetadata(this.context)).map(server => ({
             ...server,
             storage: this.storage.get(server.host),
@@ -172,7 +174,15 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider, vscode.D
     }
 
     private postActivity(): void {
-        void this.view?.webview.postMessage({ type: 'activity', activity: this.monitor.activity(), refreshing: this.monitor.busyHosts() });
+        // Background collection changes the activity many times per second; the view only needs to
+        // know which user-requested refreshes are still running.
+        const refreshing = this.monitor.manualHosts();
+        const key = refreshing.join('\n');
+        if (!this.view || key === this.lastActivityKey) {
+            return;
+        }
+        this.lastActivityKey = key;
+        void this.view.webview.postMessage({ type: 'activity', activity: this.monitor.activity(), refreshing });
     }
 
     private async handleMessage(message: unknown): Promise<void> {
@@ -184,6 +194,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider, vscode.D
         switch (payload.command) {
             case 'ready':
                 this.readyCount += 1;
+                this.lastActivityKey = '';
                 this.posted.clear();
                 await this.publish(true);
                 break;

@@ -52,6 +52,19 @@ async function main() {
     assert.strictEqual(dom.window.document.getElementById('refresh-button').disabled, false);
     assert.ok(dom.window.document.getElementById('refresh-button').classList.contains('refreshing'));
     assert.match(dom.window.document.getElementById('refresh-state').textContent, /2\/4$/);
+    // Updates during a refresh must not rebuild the button (that restarted the icon's rotation).
+    const refreshIcon = dom.window.document.querySelector('#refresh-button .icon');
+    dom.window.postMessage(dom.window.__gpuPreview, '*');
+    dom.window.postMessage({ type: 'refreshState', state: 'refreshing', completed: 3, total: 4, language: 'zh-CN' }, '*');
+    await new Promise(resolve => setTimeout(resolve, 10));
+    assert.strictEqual(dom.window.document.querySelector('#refresh-button .icon'), refreshIcon, 'The spinning icon survives updates.');
+    dom.window.postMessage({ type: 'refreshState', state: 'idle', completed: 0, total: 0, language: 'zh-CN' }, '*');
+    await new Promise(resolve => setTimeout(resolve, 10));
+    assert.ok(dom.window.document.getElementById('refresh-button').classList.contains('refreshing'), 'It finishes the current turn...');
+    await new Promise(resolve => setTimeout(resolve, 1300));
+    assert.ok(!dom.window.document.getElementById('refresh-button').classList.contains('refreshing'), '...and then stops.');
+    dom.window.postMessage({ type: 'refreshState', state: 'refreshing', completed: 2, total: 4, language: 'zh-CN' }, '*');
+    await new Promise(resolve => setTimeout(resolve, 10));
 
     dom.window.document.querySelectorAll('.server-band')[2].querySelectorAll('.gpu-main')[1].click();
     const selectedBand = dom.window.document.querySelectorAll('.server-band')[2];

@@ -177,6 +177,40 @@ export function getSidebarScript(): string {
             element.innerHTML = icons[name] || '';
             return element;
         }
+        // Spinners run only for refreshes the user asked for. Each one turns at least once and stops at
+        // the end of a turn (the CSS animation period), so it never snaps back mid-rotation.
+        const SPIN_PERIOD = 1100;
+        const spins = new Map();
+        let spinTimer;
+        let spinTimerAt = Infinity;
+        function scheduleSpinRender(at) {
+            if (at >= spinTimerAt) return;
+            clearTimeout(spinTimer);
+            spinTimerAt = at;
+            spinTimer = setTimeout(() => { spinTimerAt = Infinity; render(); }, Math.max(0, at - performance.now()));
+        }
+        function spinning(key, active) {
+            const now = performance.now();
+            const spin = spins.get(key);
+            if (active) {
+                if (!spin) spins.set(key, { start: now, stopAt: undefined });
+                else spin.stopAt = undefined;
+                return true;
+            }
+            if (!spin) return false;
+            if (spin.stopAt === undefined) {
+                spin.stopAt = spin.start + Math.max(1, Math.ceil((now - spin.start) / SPIN_PERIOD)) * SPIN_PERIOD;
+            }
+            if (now >= spin.stopAt - 20) {
+                spins.delete(key);
+                return false;
+            }
+            scheduleSpinRender(spin.stopAt);
+            return true;
+        }
+        const refreshIcon = icon('refresh-cw');
+        const refreshText = document.createTextNode('');
+        refreshRoot.replaceChildren(refreshIcon, refreshText);
         function saveState() {
             if (vscode.setState) vscode.setState({ detailsOpen: Array.from(detailsOpen), allDisks: Array.from(allDisks), allScan: Array.from(allScan) });
         }
@@ -564,7 +598,7 @@ export function getSidebarScript(): string {
             const state = serverState(server);
             const isCollapsed = collapsed.has(server.host);
             const card = node('section', 'card state-' + state + (isCollapsed ? ' collapsed' : '') + (state === 'stale' ? ' stale-data' : '') +
-                (server.refreshing ? ' refreshing' : ''));
+                (spinning('host:' + server.host, Boolean(server.refreshing)) ? ' refreshing' : ''));
             card.dataset.key = 'host:' + server.host;
             card.setAttribute('data-vscode-context', JSON.stringify({ webviewSection: 'server', host: server.host, preventDefaultContextMenuItems: true }));
             const head = node('div', 'card-head');
@@ -635,12 +669,15 @@ export function getSidebarScript(): string {
                 fragment.append(node('span', 'warn', t('sb_disksFull') + ': ' + full));
             }
             summaryRoot.replaceChildren(fragment);
-            const busy = activity.running + activity.queued > 0;
-            refreshRoot.classList.toggle('busy', busy);
+            // Background rounds run all the time with many servers; only a user-requested refresh spins.
+            const manualBusy = (activity.manual || 0) > 0;
+            refreshRoot.classList.toggle('busy', spinning('topbar', manualBusy));
             const newest = Math.max(0, ...list.map(server => server.lastSuccessAt || 0));
-            refreshRoot.replaceChildren(icon('refresh-cw'), document.createTextNode(busy ? (activity.total ? (activity.total - activity.running - activity.queued) + '/' + activity.total : '')
-                : newest ? t('sb_updated') + ' ' + new Date(newest).toLocaleTimeString() : (automatic ? '' : t('sb_manual'))));
-            refreshRoot.title = automatic ? '' : t('sb_manual');
+            const label = manualBusy ? t('sb_refreshing')
+                : newest ? t('sb_updated') + ' ' + new Date(newest).toLocaleTimeString() : (automatic ? '' : t('sb_manual'));
+            if (refreshText.nodeValue !== label) refreshText.nodeValue = label;
+            const title = automatic ? '' : t('sb_manual');
+            if (refreshRoot.title !== title) refreshRoot.title = title;
         }
         function renderEmpty() {
             const title = node('h2', '', t('sb_emptyTitle'));

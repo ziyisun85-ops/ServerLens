@@ -86,16 +86,22 @@ export function getDashboardScript(): string {
             if (option) option.textContent = label;
         }
 
+        let labelsLanguage;
         function applyStaticLanguage() {
             document.documentElement.lang = language;
-            settingsButton.replaceChildren(icon('settings-2'), document.createTextNode(t('settings')));
-            refreshButton.replaceChildren(icon('refresh-cw'), document.createTextNode(t('refresh')));
+            // Rebuilding the buttons on every update restarted the refresh icon's rotation; only do it
+            // when the language actually changes.
+            if (labelsLanguage !== language) {
+                labelsLanguage = language;
+                settingsButton.replaceChildren(icon('settings-2'), document.createTextNode(t('settings')));
+                refreshButton.replaceChildren(icon('refresh-cw'), document.createTextNode(t('refresh')));
+                myTasksButton.replaceChildren(icon('user'), document.createTextNode(t('myTasks')));
+                resetFiltersButton.replaceChildren(icon('rotate-ccw'), document.createTextNode(t('resetFilters')));
+            }
             document.getElementById('min-memory-label').textContent = t('minFreeMemory');
             document.getElementById('min-gpus-label').textContent = t('matchingGpus');
-            myTasksButton.replaceChildren(icon('user'), document.createTextNode(t('myTasks')));
             myTasksButton.title=currentMessage?.preferences?.researchUser?taskText('Filter by your configured username','按设置中的用户名筛选'):taskText('Set your remote username in Settings','在设置中填写远程用户名');
             myTasksButton.setAttribute('aria-pressed', String(Boolean(currentMessage && currentMessage.preferences && currentMessage.preferences.researchUser && selectedUser === currentMessage.preferences.researchUser)));
-            resetFiltersButton.replaceChildren(icon('rotate-ccw'), document.createTextNode(t('resetFilters')));
             searchInput.placeholder = t('search');
             searchInput.setAttribute('aria-label', t('search'));
             setOptionLabel(statusFilter, 'all', t('allGpus'));
@@ -109,10 +115,28 @@ export function getDashboardScript(): string {
             setOptionLabel(sortSelect, 'temperature', t('lowestTemperature'));
         }
 
+        // The refresh icon turns at least once and stops at the end of a turn instead of snapping back.
+        const REFRESH_SPIN_PERIOD = 1200;
+        let refreshSpinStart = 0;
+        let refreshSpinTimer;
+        function setRefreshSpin(active) {
+            clearTimeout(refreshSpinTimer);
+            if (active) {
+                if (!refreshButton.classList.contains('refreshing')) {
+                    refreshSpinStart = performance.now();
+                    refreshButton.classList.add('refreshing');
+                }
+                return;
+            }
+            if (!refreshButton.classList.contains('refreshing')) return;
+            const elapsed = performance.now() - refreshSpinStart;
+            const wait = Math.max(1, Math.ceil(elapsed / REFRESH_SPIN_PERIOD)) * REFRESH_SPIN_PERIOD - elapsed;
+            refreshSpinTimer = setTimeout(() => refreshButton.classList.remove('refreshing'), Math.max(0, wait));
+        }
         function showRefreshState(state, completed, total) {
             refreshStatus = { state, completed, total };
             const active = state === 'refreshing' || state === 'queued';
-            refreshButton.classList.toggle('refreshing', active);
+            setRefreshSpin(active);
             refreshButton.setAttribute('aria-busy', String(active));
             if (!currentMessage && active) {
                 content.replaceChildren(node('div', 'empty-state loading-state', t('loadingServers')));
