@@ -1,5 +1,6 @@
-// Dashboard panel integration with the shared MonitorService (replaces the upstream test of the
-// panel's own polling loop, which now lives in MonitorService and is covered by scheduler_test).
+// Dashboard panel integration with the shared MonitorService.
+// Rewritten for ServerLens (2026) from GPU Fleet Viewer's refresh test: the panel's own polling loop
+// moved to MonitorService, which scheduler_test covers.
 const assert = require('assert');
 const fs = require('fs');
 const os = require('os');

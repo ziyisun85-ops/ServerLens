@@ -1,3 +1,21 @@
+ServerLens
+Copyright 2026 ServerLens contributors (ziyisun85-ops)
+
+ServerLens is a derivative work of GPU Fleet Viewer 1.4.3
+(https://github.com/yruichen/gpu-fleet-viewer, Copyright 2026 yruichen), which is
+itself based on GPU Server Viewer (https://github.com/Riku-0801/gpu-server-viewer).
+All three are distributed under the Apache License, Version 2.0 (see LICENSE.txt).
+
+Files carried over from GPU Fleet Viewer and changed for ServerLens state this in
+their header comment. Main changes: the AI assistant, task tracing and reminder
+modules were removed; SSH execution moved to a shared transport and scheduler;
+disk, CPU, memory, quota and storage analysis, the sidebar card view and disk
+alerts were added. The full list is in CHANGELOG.md.
+
+The original NOTICE of GPU Fleet Viewer follows.
+
+--------------------------------------------------------------------------------
+
 GPU Fleet Viewer
 Copyright 2026 yruichen
 

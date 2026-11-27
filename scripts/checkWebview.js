@@ -1,3 +1,5 @@
+// Dashboard webview test (from GPU Fleet Viewer).
+// Modified for ServerLens (2026): AI assistant checks removed.
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');

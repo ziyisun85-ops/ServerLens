@@ -1,6 +1,35 @@
 # Changelog
 
-All notable changes to GPU Fleet Viewer are documented here.
+## ServerLens 0.1.0 - 2026-11-27
+
+First release of ServerLens, forked from GPU Fleet Viewer 1.4.3. Compared with GPU Fleet Viewer:
+
+### Added
+- **Sidebar Monitor view** with one card per server: GPU utilization and memory, CPU, RAM, swap, storage bars, error banner with the last successful update, collapsible cards, details section, hover tooltips, right-click actions, narrow-width layout, light/dark/high-contrast themes, English and Chinese.
+- **Disk monitoring** of every real filesystem (`df -P -k -T`): pseudo filesystems hidden, several mount points of one filesystem merged, pinned paths, extra hidden mounts and types, network filesystems marked, green/yellow/red thresholds (70 % / 90 % by default, configurable).
+- **Personal quotas** from `quota -v` and Lustre `lfs quota`, shown separately from free disk space.
+- **Disk capacity alerts** that fire once per crossing, re-arm after a 2-point drop, survive reloads, and can be snoozed for 24 h or muted per disk.
+- **CPU usage** from `/proc/stat` deltas (user/system/iowait/steal), logical/physical/usable cores, load averages; **memory** from `MemAvailable` (estimated on old kernels) and **swap**.
+- **Storage analysis** on demand: presets for Home, Conda, pip, Hugging Face, PyTorch and `~/.cache`, configured folders or a custom path; `du` at low priority with a time limit, cancellable, one scan per server, read-only.
+- Status descriptions in the Servers tree; status bar shows full disks.
+
+### Changed
+- One shared scheduler (MonitorService) for the sidebar, dashboards, tree and status bar instead of a polling loop per dashboard panel. GPU, CPU, memory and disk have separate intervals (5/5/5/60 s); metrics due together are batched into one SSH command; hosts never overlap; manual refreshes coalesce; failed hosts back off from 10 s to 2 min.
+- **SSH connection reuse** through OpenSSH ControlMaster (private socket directory, closed on deactivate). Monitoring connections clear port forwards from the SSH config and disable agent/X11 forwarding.
+- Remote commands are sent on stdin to `sh -s` with `LC_ALL=C`, so fish/tcsh login shells and noisy `~/.bashrc` output no longer break parsing; every command is limited with `timeout` when available.
+- Servers without `nvidia-smi` are shown as CPU-only instead of failed; a broken or slow `nvidia-smi` no longer hides CPU, memory and disks. Slow `nvidia-smi` gets a longer limit on the next round, and slow hosts are polled less often.
+- A hung network filesystem no longer blocks disk data: after a `df` timeout only local filesystems are read.
+- GPU notifications and the status bar work without the dashboard being open.
+- New name, publisher, icons, settings/command prefix (`serverlens.*`); settings are copied once from `gpu-fleet-viewer.*`.
+
+### Removed
+- AI assistant, task tracing and GPU release reminders (and the `markdown-it` dependency).
+- The `xml2js` dependency (the XML parsing path was only used by tests). ServerLens has no runtime dependencies.
+- The workflow that published to the Marketplace on every push to `main`.
+
+---
+
+GPU Fleet Viewer history (upstream, before the fork):
 
 ## 1.4.3 - 2026-10-19
 

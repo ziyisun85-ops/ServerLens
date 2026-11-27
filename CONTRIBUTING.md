@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve GPU Fleet Viewer.
+Thanks for helping improve ServerLens.
 
 ## Before opening a change
 

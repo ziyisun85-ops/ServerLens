@@ -1,3 +1,5 @@
+// Dashboard settings dialog (from GPU Fleet Viewer).
+// Modified for ServerLens (2026): AI section removed; storage group, list fields and option labels added.
 import { preferenceFields } from './preferences';
 
 export function getPreferencesHtml(): string {

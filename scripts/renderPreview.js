@@ -1,3 +1,5 @@
+// Dashboard preview renderer (from GPU Fleet Viewer).
+// Modified for ServerLens (2026): sample host health translated to the new CPU/memory/disk fields.
 const fs = require('fs');
 const path = require('path');
 const Module = require('module');

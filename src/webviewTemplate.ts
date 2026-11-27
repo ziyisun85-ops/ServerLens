@@ -1,3 +1,6 @@
+// Dashboard webview script and styles (from GPU Fleet Viewer).
+// Modified for ServerLens (2026): AI assistant and task tracing removed; DOM helpers moved to
+// webviewShared.ts; server rows show CPU, RAM and the fullest disk.
 import en = require('./locales/en.json');
 import zhCN = require('./locales/zh-CN.json');
 import lineIcons = require('./lineIcons.json');

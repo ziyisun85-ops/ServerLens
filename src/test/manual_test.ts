@@ -1,3 +1,5 @@
+// GPU parser, SSH config and fleet model tests (from GPU Fleet Viewer).
+// Modified for ServerLens (2026): XML and SSH-execution cases moved to the new transport/collection tests.
 import * as assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';

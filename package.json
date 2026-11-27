@@ -677,7 +677,7 @@
 		"watch": "tsc -watch -p ./",
 		"pretest": "npm run compile && npm run lint",
 		"lint": "eslint src --ext ts",
-		"test": "node scripts/checkLocales.js && node ./out/test/manual_test.js && node ./out/test/parsers_test.js && node ./out/test/collect_test.js && node ./out/test/transport_test.js && node ./out/test/scheduler_test.js && node ./out/test/storage_alerts_test.js && node scripts/checkRefresh.js && npm run preview:build && node scripts/checkWebview.js && node scripts/checkSidebar.js",
+		"test": "node scripts/checkLocales.js && node ./out/test/manual_test.js && node ./out/test/parsers_test.js && node ./out/test/collect_test.js && node ./out/test/transport_test.js && node ./out/test/scheduler_test.js && node ./out/test/storage_alerts_test.js && node scripts/checkRefresh.js && npm run preview:build && node scripts/checkWebview.js && node scripts/checkSidebar.js && node scripts/checkActivation.js",
 		"package": "vsce package --out releases/"
 	},
 	"devDependencies": {

@@ -66,6 +66,12 @@ ServerLens 是面向 AI 科研人员的 VS Code 多服务器资源监控插件�
 | D14 | 侧边栏新增 WebviewView “Monitor” 卡片视图，复用原项目的 DOM 补丁、图标、进度条和翻译机制；原 “Servers” 树和仪表盘面板保留 | 需求要求卡片式侧边栏，同时保留原有交互 |
 | D15 | 去掉运行时依赖 xml2js：XML 解析路径只在测试里用到 | 插件运行时零第三方依赖，VSIX 更小 |
 | D16 | 测试沿用上游约定：编译后用 node 直接运行断言脚本，界面用 jsdom 测试 | 与原项目一致，不引入新的测试框架 |
+| D17 | 同一台物理机的多个别名（GPU UUID 相同）仍分别采集，只在 GPU 汇总里计一次 | 原实现直接跳过别名的采集；但不同别名可能是不同用户或不同容器，磁盘和配额不同 |
+| D18 | nvidia-smi 超时一次后，该主机下一轮给 nvidia-smi 45 秒；一轮耗时很长的主机，采集间隔不小于本轮耗时的两倍（最多 5 分钟） | 真实服务器上 nvidia-smi 被其他用户的查询拖到 28 秒；固定 8 秒限制会让 GPU 永远显示不出来，而一直重试会持续占用服务器 |
+| D19 | 状态栏点击打开侧边栏 Monitor 视图（原为打开仪表盘） | 侧边栏是新的主界面；仪表盘仍可从标题栏和 Servers 树打开 |
+| D20 | 服务器超过 6 台时卡片默认折叠，用户展开后记住状态 | 开发时所用的 SSH 配置有 40 多台主机，全部展开过长 |
+| D21 | 容量单位默认 IEC（GiB/TiB，1024 进制），可切换为 SI | 与 `df -h` 和 nvidia-smi 的数值一致 |
+| D22 | 截图用 Chrome 无头模式渲染真实的 webview 代码和 VS Code 默认主题变量 | 开发期间没有在本机启动 VS Code 窗口 |
 
 ## 3. 架构
 
@@ -100,7 +106,27 @@ main() {
 main </dev/null
 ```
 
-## 4. 任务进度
+## 4. 文件说明
+
+| 文件 | 作用 | 来源 |
+|---|---|---|
+| `src/extension.ts` | 激活、命令、设置迁移、停用清理 | 修改 |
+| `src/sshTransport.ts` | ssh 参数、连接复用、超时、取消、错误分类 | 新增 |
+| `src/remoteScript.ts` | 批量采集脚本、输出分段、路径引号 | 新增 |
+| `src/monitorService.ts` | 调度、合并、并发、退避、暂停、事件 | 新增 |
+| `src/gpuMonitor.ts` | nvidia-smi、ps、Slurm 解析 | 修改（保留原解析代码） |
+| `src/hostMetrics.ts` | CPU、内存、系统信息解析 | 新增 |
+| `src/diskMetrics.ts` | df、/proc/mounts、quota、lfs quota 解析和磁盘报告 | 新增 |
+| `src/alerts.ts`、`src/notifications.ts` | 磁盘提醒、GPU 通知、状态栏 | 新增（GPU 通知逻辑移自原 gpuView.ts） |
+| `src/storageAnalyzer.ts`、`src/storageCommand.ts` | 目录分析和命令交互 | 新增 |
+| `src/sidebarView.ts`、`src/sidebarTemplate.ts` | 侧边栏卡片视图 | 新增 |
+| `src/webviewShared.ts`、`src/format.ts` | 两个 webview 共用的 DOM 补丁和格式化函数 | 新增（DOM 补丁移自原 webviewTemplate.ts） |
+| `src/settings.ts`、`src/serverActions.ts` | 读取设置；收藏、分组、终端等操作 | 新增（操作移自原 gpuView.ts） |
+| `src/gpuView.ts`、`src/webviewTemplate.ts` | 仪表盘 | 修改 |
+| `src/serverProvider.ts`、`src/sshConfig.ts` | Servers 树、SSH config 解析 | 修改 / 未改 |
+| `src/preferences.ts`、`src/preferencesView.ts` | 仪表盘设置对话框 | 修改 |
+
+## 5. 任务进度
 
 ### Phase 1：源码分析
 - [x] 检查两个原始项目的架构、功能和许可证
@@ -109,32 +135,51 @@ main </dev/null
 - [x] 编写本文档
 
 ### Phase 2：核心功能
-- [ ] 移除 AI 助手、任务溯源、提醒和自动发布工作流
-- [ ] 更新插件名称、标识符、设置前缀，迁移旧设置
-- [ ] SshTransport：连接复用、超时、取消、清理
-- [ ] 批量远程脚本与 GPU/CPU/内存/磁盘/配额解析
-- [ ] MonitorService：独立刷新频率、并发、退避、防重叠
-- [ ] 磁盘容量预警
-- [ ] 侧边栏卡片视图；仪表盘和 Servers 树接入新数据
+- [x] 移除 AI 助手、任务溯源、提醒和自动发布工作流
+- [x] 更新插件名称、标识符、设置前缀，迁移旧设置
+- [x] SshTransport：连接复用、超时、取消、清理
+- [x] 批量远程脚本与 GPU/CPU/内存/磁盘/配额解析
+- [x] MonitorService：独立刷新频率、并发、退避、防重叠
+- [x] 磁盘容量预警
+- [x] 侧边栏卡片视图；仪表盘和 Servers 树接入新数据
 
 ### Phase 3：界面与性能
-- [ ] 卡片布局、折叠、悬停详情、窄宽度适配、浅色和深色主题
-- [ ] 目录容量分析
-- [ ] 异常处理：无 GPU、命令缺失、输出异常、网络存储挂死、断线
+- [x] 卡片布局、折叠、悬停详情、窄宽度适配、浅色和深色主题
+- [x] 目录容量分析
+- [x] 异常处理：无 GPU、命令缺失、输出异常、网络存储挂死、断线、nvidia-smi 过慢
 
 ### Phase 4：测试与交付
-- [ ] 解析单元测试、调度测试、传输层测试、界面测试
-- [ ] 真实服务器只读集成测试（用户允许 1 到 2 台，Home 目录 du 一次）
-- [ ] 类型检查、lint、构建、打包 VSIX
-- [ ] README、配置文档、测试报告、改进说明、截图
+- [x] 解析单元测试、调度测试、传输层测试、界面测试、激活冒烟测试
+- [x] 真实服务器只读集成测试（两台共享 GPU 服务器，Home 目录 du）
+- [x] 类型检查、lint、构建、打包 VSIX（`releases/serverlens-0.1.0.vsix`）
+- [x] README、配置文档、测试报告、改进说明（CHANGELOG）、截图
 
-## 5. 开发环境
+未完成和无法验证的内容见 [docs/TEST_REPORT.md](docs/TEST_REPORT.md) 第 6 节。
+
+## 6. 开发环境与命令
 
 ```sh
 # 需要 Node.js 20 或更高版本（开发时使用 Node 24 LTS）
 npm ci
 npm run compile     # TypeScript 编译到 out/
 npm run lint
-npm test            # 全部断言脚本和 jsdom 界面测试
-npx vsce package    # 生成 .vsix
+npm test            # 12 个测试脚本，含 jsdom 界面测试
+npm run package     # 生成 releases/serverlens-<version>.vsix
 ```
+
+预览和截图：`npm run preview:build` 生成 `preview/index.html`（仪表盘）和 `preview/sidebar-*.html`（侧边栏），可直接用浏览器打开。
+
+真实服务器检查（不在 `npm test` 中，只执行只读命令）：
+
+```sh
+node scripts/integration.js <ssh-host> [<ssh-host>...] [--du <ssh-host>]
+```
+
+`--du` 会对该主机的 Home 目录做一次深度 1、30 秒上限的 du 扫描，只在得到服务器使用者同意后使用。
+
+## 7. 后续可做
+
+- 配额：XFS 项目配额、BeeGFS、GPFS。
+- 磁盘 inode 使用率（小文件数据集常见的“空间够但 inode 用尽”）。
+- 目录分析结果持久化，以及两次扫描之间的变化对比。
+- 在真实 VS Code 中做一次端到端检查（`@vscode/test-electron`），确认右键菜单和视图标题栏按钮。
