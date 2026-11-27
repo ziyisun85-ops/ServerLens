@@ -32,34 +32,50 @@ const configurationKeys = [
     'notificationCooldownSeconds',
     'memoryWarningThreshold',
     'temperatureWarningThreshold',
-    'powerWarningThreshold'
+    'powerWarningThreshold',
+    'researchUser',
+    'visibleGpus'
 ] as const;
 
-async function migrateLegacySettings(): Promise<void> {
-    const legacy = vscode.workspace.getConfiguration('gpu-server-viewer');
-    const current = vscode.workspace.getConfiguration('gpu-fleet-viewer');
+const LEGACY_SECTIONS = ['gpu-fleet-viewer', 'gpu-server-viewer'] as const;
+const MIGRATION_FLAG = 'serverlens.legacySettingsMigrated';
 
+/**
+ * Copies user-level settings from GPU Fleet Viewer (or its predecessor GPU Server Viewer)
+ * once, so users switching to ServerLens keep their host lists and thresholds.
+ */
+async function migrateLegacySettings(context: vscode.ExtensionContext): Promise<void> {
+    if (context.globalState.get<boolean>(MIGRATION_FLAG)) {
+        return;
+    }
+    const current = vscode.workspace.getConfiguration('serverlens');
     for (const key of configurationKeys) {
-        const oldValue = legacy.inspect<unknown>(key)?.globalValue;
-        const newValue = current.inspect<unknown>(key)?.globalValue;
-        if (newValue === undefined && oldValue !== undefined) {
-            await current.update(key, oldValue, vscode.ConfigurationTarget.Global);
+        if (current.inspect<unknown>(key)?.globalValue !== undefined) {
+            continue;
+        }
+        for (const section of LEGACY_SECTIONS) {
+            const oldValue = vscode.workspace.getConfiguration(section).inspect<unknown>(key)?.globalValue;
+            if (oldValue !== undefined) {
+                await current.update(key, oldValue, vscode.ConfigurationTarget.Global);
+                break;
+            }
         }
     }
+    await context.globalState.update(MIGRATION_FLAG, true);
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-    await migrateLegacySettings();
+    await migrateLegacySettings(context);
     const serverProvider = new GpuServerProvider();
     const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-    statusBar.command = 'gpu-fleet-viewer.openDashboard';
-    statusBar.name = 'GPU Fleet Viewer';
-    statusBar.text = '$(dashboard) GPU Fleet';
+    statusBar.command = 'serverlens.openDashboard';
+    statusBar.name = 'ServerLens';
+    statusBar.text = '$(dashboard) ServerLens';
     statusBar.tooltip = 'Open GPU Dashboard';
 
     const updateStatusBarVisibility = () => {
         const visible = vscode.workspace
-            .getConfiguration('gpu-fleet-viewer')
+            .getConfiguration('serverlens')
             .get<boolean>('showStatusBar', true);
         if (visible) {
             statusBar.show();
@@ -71,7 +87,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const updateStatusBar = (summary: GpuStatusSummary) => {
         statusBar.text = `$(dashboard) GPU ${summary.gpusAvailable}/${summary.gpusTotal} free`;
         statusBar.tooltip = new vscode.MarkdownString(
-            `**GPU Fleet Viewer**  \n` +
+            `**ServerLens**  \n` +
             `${summary.serversOnline}/${summary.serversTotal} servers online  \n` +
             `${summary.gpusAvailable}/${summary.gpusTotal} GPUs available  \n` +
             `${summary.memoryPercent}% aggregate memory used`
@@ -84,12 +100,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     context.subscriptions.push(
         statusBar,
-        vscode.window.registerTreeDataProvider('gpuServerList', serverProvider),
-        vscode.commands.registerCommand('gpu-fleet-viewer.refresh', () => {
+        vscode.window.registerTreeDataProvider('serverlens.servers', serverProvider),
+        vscode.commands.registerCommand('serverlens.refresh', () => {
             serverProvider.refresh();
             GpuViewPanel.refreshAll();
         }),
-        vscode.commands.registerCommand('gpu-fleet-viewer.addServer', async () => {
+        vscode.commands.registerCommand('serverlens.addServer', async () => {
             const target = await vscode.window.showInputBox({
                 title: 'Add GPU server',
                 prompt: 'Enter an SSH config alias, IP address, hostname, or user@host',
@@ -111,7 +127,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 return;
             }
 
-            const config = vscode.workspace.getConfiguration('gpu-fleet-viewer');
+            const config = vscode.workspace.getConfiguration('serverlens');
             const current = config.get<string[]>('additionalHosts', []);
             const updated = Array.from(new Set([...current, target.trim()]));
             await config.update('additionalHosts', updated, vscode.ConfigurationTarget.Global);
@@ -125,18 +141,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 openDashboard();
             }
         }),
-        vscode.commands.registerCommand('gpu-fleet-viewer.openServer', (host: string) => openDashboard(host)),
-        vscode.commands.registerCommand('gpu-fleet-viewer.openDashboard', () => openDashboard()),
-        vscode.commands.registerCommand('gpu-fleet-viewer.findAvailableGpu', () => {
+        vscode.commands.registerCommand('serverlens.openServer', (host: string) => openDashboard(host)),
+        vscode.commands.registerCommand('serverlens.openDashboard', () => openDashboard()),
+        vscode.commands.registerCommand('serverlens.findAvailableGpu', () => {
             void GpuViewPanel.showAvailableGpuQuickPick();
         }),
-        vscode.commands.registerCommand('gpu-fleet-viewer.openSettings', () => {
+        vscode.commands.registerCommand('serverlens.openSettings', () => {
             void vscode.commands.executeCommand(
                 'workbench.action.openSettings',
-                '@ext:yruichen.gpu-fleet-viewer'
+                '@ext:ziyisun85-ops.serverlens'
             );
         }),
-        vscode.commands.registerCommand('gpu-fleet-viewer.connectSsh', (item: unknown) => {
+        vscode.commands.registerCommand('serverlens.connectSsh', (item: unknown) => {
             let host = '';
             if (typeof item === 'string') {
                 host = item;
@@ -150,8 +166,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 });
             }
         }),
-        vscode.commands.registerCommand('gpu-fleet-viewer.configureServers', async () => {
-            const config = vscode.workspace.getConfiguration('gpu-fleet-viewer');
+        vscode.commands.registerCommand('serverlens.configureServers', async () => {
+            const config = vscode.workspace.getConfiguration('serverlens');
             const configPath = config.get<string>('sshConfigPath') || '~/.ssh/config';
             const targets = config.get<string[]>('targets') || [];
             const additionalHosts = config.get<string[]>('additionalHosts') || [];
@@ -181,13 +197,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             }
         }),
         vscode.workspace.onDidChangeConfiguration(event => {
-            if (event.affectsConfiguration('gpu-fleet-viewer.showStatusBar')) {
+            if (event.affectsConfiguration('serverlens.showStatusBar')) {
                 updateStatusBarVisibility();
             }
-            if (event.affectsConfiguration('gpu-fleet-viewer.targets') ||
-                event.affectsConfiguration('gpu-fleet-viewer.additionalHosts') ||
-                event.affectsConfiguration('gpu-fleet-viewer.ignoredHosts') ||
-                event.affectsConfiguration('gpu-fleet-viewer.sshConfigPath')) {
+            if (event.affectsConfiguration('serverlens.targets') ||
+                event.affectsConfiguration('serverlens.additionalHosts') ||
+                event.affectsConfiguration('serverlens.ignoredHosts') ||
+                event.affectsConfiguration('serverlens.sshConfigPath')) {
                 serverProvider.refresh();
             }
         })

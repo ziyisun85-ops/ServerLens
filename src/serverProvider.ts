@@ -26,7 +26,7 @@ export class GpuServerProvider implements vscode.TreeDataProvider<vscode.TreeIte
         const dashboardItem = new vscode.TreeItem('Dashboard', vscode.TreeItemCollapsibleState.None);
         dashboardItem.iconPath = new vscode.ThemeIcon('dashboard');
         dashboardItem.command = {
-            command: 'gpu-fleet-viewer.openDashboard',
+            command: 'serverlens.openDashboard',
             title: 'Open Dashboard'
         };
         dashboardItem.contextValue = 'dashboard';
@@ -39,7 +39,7 @@ export class GpuServerProvider implements vscode.TreeDataProvider<vscode.TreeIte
     }
 
     public static getHosts(): SshHost[] {
-        const config = vscode.workspace.getConfiguration('gpu-fleet-viewer');
+        const config = vscode.workspace.getConfiguration('serverlens');
         const configPath = config.get<string>('sshConfigPath') || '~/.ssh/config';
         const targets = config.get<string[]>('targets') || [];
         const additionalHosts = config.get<string[]>('additionalHosts') || [];
@@ -78,7 +78,7 @@ export class ServerTreeItem extends vscode.TreeItem {
         this.contextValue = 'server';
 
         this.command = {
-            command: 'gpu-fleet-viewer.openServer',
+            command: 'serverlens.openServer',
             title: 'Open GPU View',
             arguments: [this.host]
         };

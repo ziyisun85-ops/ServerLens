@@ -39,7 +39,7 @@ interface ViewSettings {
 
 type StatusUpdateHandler = (summary: GpuStatusSummary) => void;
 type UiLanguage = 'en' | 'zh-CN';
-const METADATA_KEY = 'gpu-fleet-viewer.serverMetadata';
+const METADATA_KEY = 'serverlens.serverMetadata';
 const AUTO_REFRESH_KEYS = ['autoRefresh', 'refreshInterval', 'pauseWhenHidden'] as const;
 const DATA_REFRESH_KEYS = [
     'sshConfigPath', 'targets', 'additionalHosts', 'ignoredHosts', 'showProcesses',
@@ -48,7 +48,7 @@ const DATA_REFRESH_KEYS = [
 ] as const;
 function getUiLanguage(): UiLanguage {
     const configured = vscode.workspace
-        .getConfiguration('gpu-fleet-viewer')
+        .getConfiguration('serverlens')
         .get<string>('language', 'auto');
     if (configured === 'zh-CN' || configured === 'en') {
         return configured;
@@ -99,7 +99,7 @@ export class GpuViewPanel {
         this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
         this.panel.onDidChangeViewState(event => {
             if (event.webviewPanel.visible) void this.showCachedAndRefreshIfStale();
-            else if (vscode.workspace.getConfiguration('gpu-fleet-viewer').get<boolean>('pauseWhenHidden', true)) this.clearAutoRefreshTimer();
+            else if (vscode.workspace.getConfiguration('serverlens').get<boolean>('pauseWhenHidden', true)) this.clearAutoRefreshTimer();
         }, null, this.disposables);
         this.panel.webview.onDidReceiveMessage(message => void this.handleMessage(message), null, this.disposables);
         this.disposables.push(vscode.workspace.onDidChangeConfiguration(event => {
@@ -121,8 +121,8 @@ export class GpuViewPanel {
             return;
         }
         const panel = vscode.window.createWebviewPanel(
-            'gpuView',
-            host ? `GPU: ${host}` : 'GPU Fleet',
+            'serverlens.dashboard',
+            host ? `GPU: ${host}` : 'ServerLens',
             column,
             {
                 enableScripts: true,
@@ -142,10 +142,10 @@ export class GpuViewPanel {
     public static async showAvailableGpuQuickPick(): Promise<void> {
         const panel = Array.from(GpuViewPanel.panels).find(candidate => !candidate.host && candidate.lastData.length);
         if (!panel) {
-            await vscode.window.showInformationMessage('Open GPU Fleet and wait for the first refresh.');
+            await vscode.window.showInformationMessage('Open ServerLens and wait for the first refresh.');
             return;
         }
-        const candidates = visibleFleet(panel.lastData, vscode.workspace.getConfiguration('gpu-fleet-viewer').get<Record<string,string[]>>('visibleGpus',{}))
+        const candidates = visibleFleet(panel.lastData, vscode.workspace.getConfiguration('serverlens').get<Record<string,string[]>>('visibleGpus',{}))
             .filter(server => !server.error && !server.stale && !server.duplicateOf)
             .flatMap(server => server.gpus
                 .filter(gpu => gpu.availability.available)
@@ -197,18 +197,18 @@ export class GpuViewPanel {
                 break;
             case 'connect':
                 if (this.validHost(payload.host)) {
-                    await vscode.commands.executeCommand('gpu-fleet-viewer.connectSsh', payload.host);
+                    await vscode.commands.executeCommand('serverlens.connectSsh', payload.host);
                 }
                 break;
             case 'settings':
             case 'openNativeSettings':
-                await vscode.commands.executeCommand('gpu-fleet-viewer.openSettings');
+                await vscode.commands.executeCommand('serverlens.openSettings');
                 break;
             case 'configureServers':
-                await vscode.commands.executeCommand('gpu-fleet-viewer.configureServers');
+                await vscode.commands.executeCommand('serverlens.configureServers');
                 break;
             case 'addServer':
-                await vscode.commands.executeCommand('gpu-fleet-viewer.addServer');
+                await vscode.commands.executeCommand('serverlens.addServer');
                 break;
             case 'savePreferences':
                 await this.savePreferences(payload.values);
@@ -235,7 +235,7 @@ export class GpuViewPanel {
     }
 
     private affectsAny(event: vscode.ConfigurationChangeEvent, keys: readonly string[]): boolean {
-        return keys.some(key => event.affectsConfiguration(`gpu-fleet-viewer.${key}`));
+        return keys.some(key => event.affectsConfiguration(`serverlens.${key}`));
     }
 
     private async handleConfigurationChange(event: vscode.ConfigurationChangeEvent): Promise<void> {
@@ -244,7 +244,7 @@ export class GpuViewPanel {
             this.scheduleAutoRefresh();
         }
         if (this.affectsAny(event, DATA_REFRESH_KEYS)) {
-            if (event.affectsConfiguration('gpu-fleet-viewer.sshConfigPath')) {
+            if (event.affectsConfiguration('serverlens.sshConfigPath')) {
                 this.duplicateAliases.clear();
                 this.lastSuccessful.clear();
                 this.failedHosts.clear();
@@ -253,7 +253,7 @@ export class GpuViewPanel {
             await this.requestRefresh(true);
             return;
         }
-        if (event.affectsConfiguration('gpu-fleet-viewer')) {
+        if (event.affectsConfiguration('serverlens')) {
             await this.publishCurrent();
         }
     }
@@ -262,7 +262,7 @@ export class GpuViewPanel {
         if (this.savingPreferences) return;
         try {
             const changes = validatePreferenceChanges(input);
-            const config = vscode.workspace.getConfiguration('gpu-fleet-viewer');
+            const config = vscode.workspace.getConfiguration('serverlens');
             const entries = Object.entries(changes).filter(([key, value]) => JSON.stringify(config.get(key)) !== JSON.stringify(value));
             this.savingPreferences = true;
             try {
@@ -295,7 +295,7 @@ export class GpuViewPanel {
         if (this.disposed || this.refreshPromise) {
             return;
         }
-        const config = vscode.workspace.getConfiguration('gpu-fleet-viewer');
+        const config = vscode.workspace.getConfiguration('serverlens');
         if (!config.get<boolean>('autoRefresh', true)) {
             return;
         }
@@ -314,7 +314,7 @@ export class GpuViewPanel {
     private async showCachedAndRefreshIfStale(): Promise<void> {
         await this.publishCurrent();
         const interval = Math.max(2, vscode.workspace
-            .getConfiguration('gpu-fleet-viewer')
+            .getConfiguration('serverlens')
             .get<number>('refreshInterval', 5)) * 1000;
         if (!this.lastCompletedAt || Date.now() - this.lastCompletedAt >= interval) {
             await this.requestRefresh(false);
@@ -358,7 +358,7 @@ export class GpuViewPanel {
     }
 
     private async refreshOnce(force=false): Promise<void> {
-        const config = vscode.workspace.getConfiguration('gpu-fleet-viewer');
+        const config = vscode.workspace.getConfiguration('serverlens');
         const settings = this.readViewSettings();
         const hosts = this.host ? [{ host: this.host }] : GpuServerProvider.getHosts();
         const hostNames = hosts.map(item => item.host);
@@ -572,7 +572,7 @@ export class GpuViewPanel {
         notify: boolean
     ): Promise<void> {
         const language = getUiLanguage();
-        const config = vscode.workspace.getConfiguration('gpu-fleet-viewer');
+        const config = vscode.workspace.getConfiguration('serverlens');
         const visible = visibleFleet(this.lastData, config.get<Record<string,string[]>>('visibleGpus',{}));
         const summary = summarizeFleet(visible, settings);
         const revision = ++this.publication;
@@ -597,7 +597,7 @@ export class GpuViewPanel {
     }
 
     private readViewSettings(): ViewSettings {
-        const config = vscode.workspace.getConfiguration('gpu-fleet-viewer');
+        const config = vscode.workspace.getConfiguration('serverlens');
         return {
             compactLayout: config.get<boolean>('compactLayout', true),
             showUtilization: config.get<boolean>('showUtilization', true),
@@ -616,7 +616,7 @@ export class GpuViewPanel {
     }
 
     private notifyTransitions(data: ServerStatus[], settings: ViewSettings): void {
-        const config = vscode.workspace.getConfiguration('gpu-fleet-viewer');
+        const config = vscode.workspace.getConfiguration('serverlens');
         const enabled = config.get<boolean>('enableNotifications', false);
         const eventTypes = new Set(config.get<string[]>('notificationEvents', ['serverState', 'gpuAvailable', 'threshold']));
         const messages: string[] = [];
@@ -657,7 +657,7 @@ export class GpuViewPanel {
         const cooldown = Math.max(0, config.get<number>('notificationCooldownSeconds', 60)) * 1000;
         if (enabled && messages.length && Date.now() - this.lastNotificationAt >= cooldown) {
             this.lastNotificationAt = Date.now();
-            void vscode.window.showWarningMessage(`GPU Fleet — ${messages.slice(0, 4).join(' · ')}`);
+            void vscode.window.showWarningMessage(`ServerLens — ${messages.slice(0, 4).join(' · ')}`);
         }
     }
 
@@ -668,7 +668,7 @@ export class GpuViewPanel {
         const terminal = vscode.window.createTerminal({ name: `GPU ${host}` });
         terminal.show();
         const quote = (value:string) => "'" + value.replace(/'/g,"'\\''") + "'";
-        const configArgs = sshConfigArguments(vscode.workspace.getConfiguration('gpu-fleet-viewer').get<string>('sshConfigPath'));
+        const configArgs = sshConfigArguments(vscode.workspace.getConfiguration('serverlens').get<string>('sshConfigPath'));
         const command = `ssh ${configArgs.map(quote).join(' ')} -t ${host} 'export CUDA_DEVICE_ORDER=PCI_BUS_ID; export CUDA_VISIBLE_DEVICES=${uuid}; exec "$SHELL" -l'`;
         terminal.sendText(command, false);
     }
@@ -792,7 +792,7 @@ export class GpuViewPanel {
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
-            <title>GPU Fleet Viewer</title>
+            <title>ServerLens</title>
             <style>${getDashboardCss()}</style>
         </head>
         <body>

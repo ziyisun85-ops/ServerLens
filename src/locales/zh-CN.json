@@ -1,8 +1,8 @@
 {
   "settings": "设置",
   "refresh": "刷新",
-  "dashboardTitle": "GPU Fleet",
-  "panelTitle": "GPU Fleet",
+  "dashboardTitle": "ServerLens",
+  "panelTitle": "ServerLens",
   "waiting": "等待数据…",
   "refreshing": "正在刷新…",
   "refreshQueued": "已加入刷新队列…",

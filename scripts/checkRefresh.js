@@ -15,7 +15,7 @@ async function main() {
         get: (key, fallback) => values.has(key) ? values.get(key) : fallback,
         update: async (key, value) => {
             values.set(key, value);
-            for (const listener of listeners) listener({ affectsConfiguration: prefix => ('gpu-fleet-viewer.' + key).startsWith(prefix) });
+            for (const listener of listeners) listener({ affectsConfiguration: prefix => ('serverlens.' + key).startsWith(prefix) });
         }
     };
     const originalLoad = Module._load;

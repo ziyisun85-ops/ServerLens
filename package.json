@@ -1,20 +1,20 @@
 {
-	"name": "gpu-fleet-viewer",
-	"displayName": "GPU Fleet Viewer",
-	"description": "A fast, privacy-friendly VS Code dashboard for monitoring NVIDIA GPU fleets over SSH",
+	"name": "serverlens",
+	"displayName": "ServerLens",
+	"description": "Lightweight multi-server monitor for AI research: GPUs, CPU, memory, disks and quotas over SSH, no remote agent",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/yruichen/gpu-fleet-viewer.git"
+		"url": "https://github.com/ziyisun85-ops/ServerLens.git"
 	},
-	"homepage": "https://github.com/yruichen/gpu-fleet-viewer#readme",
+	"homepage": "https://github.com/ziyisun85-ops/ServerLens#readme",
 	"bugs": {
-		"url": "https://github.com/yruichen/gpu-fleet-viewer/issues"
+		"url": "https://github.com/ziyisun85-ops/ServerLens/issues"
 	},
-	"author": "yruichen",
+	"author": "ziyisun85-ops",
 	"license": "Apache-2.0",
-	"version": "1.4.3",
+	"version": "0.1.0",
 	"icon": "resources/icon.png",
-	"publisher": "yruichen",
+	"publisher": "ziyisun85-ops",
 	"pricing": "Free",
 	"galleryBanner": {
 		"color": "#1f2428",
@@ -26,11 +26,15 @@
 		"nvidia-smi",
 		"ssh",
 		"monitoring",
+		"disk",
+		"storage",
+		"quota",
+		"cpu",
+		"memory",
 		"machine-learning",
 		"research",
 		"hpc",
-		"slurm",
-		"cuda"
+		"slurm"
 	],
 	"engines": {
 		"vscode": "^1.80.0"
@@ -48,16 +52,16 @@
 		"viewsContainers": {
 			"activitybar": [
 				{
-					"id": "gpu-fleet-viewer",
-					"title": "GPU Fleet",
+					"id": "serverlens",
+					"title": "ServerLens",
 					"icon": "resources/gpu-icon.svg"
 				}
 			]
 		},
 		"views": {
-			"gpu-fleet-viewer": [
+			"serverlens": [
 				{
-					"id": "gpuServerList",
+					"id": "serverlens.servers",
 					"name": "Servers",
 					"icon": "resources/gpu-icon.svg"
 				}
@@ -65,77 +69,77 @@
 		},
 		"commands": [
 			{
-				"command": "gpu-fleet-viewer.refresh",
+				"command": "serverlens.refresh",
 				"title": "Refresh GPU Status",
-				"category": "GPU Fleet Viewer",
+				"category": "ServerLens",
 				"icon": "$(refresh)"
 			},
 			{
-				"command": "gpu-fleet-viewer.addServer",
+				"command": "serverlens.addServer",
 				"title": "Add Server",
-				"category": "GPU Fleet Viewer"
+				"category": "ServerLens"
 			},
 			{
-				"command": "gpu-fleet-viewer.openDashboard",
+				"command": "serverlens.openDashboard",
 				"title": "Open Dashboard",
-				"category": "GPU Fleet Viewer",
+				"category": "ServerLens",
 				"icon": "$(dashboard)"
 			},
 			{
-				"command": "gpu-fleet-viewer.findAvailableGpu",
+				"command": "serverlens.findAvailableGpu",
 				"title": "Find Available GPU",
-				"category": "GPU Fleet Viewer",
+				"category": "ServerLens",
 				"icon": "$(search-fuzzy)"
 			},
 			{
-				"command": "gpu-fleet-viewer.connectSsh",
+				"command": "serverlens.connectSsh",
 				"title": "Connect SSH",
-				"category": "GPU Fleet Viewer",
+				"category": "ServerLens",
 				"icon": "$(remote)"
 			},
 			{
-				"command": "gpu-fleet-viewer.configureServers",
+				"command": "serverlens.configureServers",
 				"title": "Configure Servers",
-				"category": "GPU Fleet Viewer",
+				"category": "ServerLens",
 				"icon": "$(gear)"
 			},
 			{
-				"command": "gpu-fleet-viewer.openSettings",
-				"title": "GPU Fleet Viewer Settings",
-				"category": "GPU Fleet Viewer",
+				"command": "serverlens.openSettings",
+				"title": "ServerLens Settings",
+				"category": "ServerLens",
 				"icon": "$(settings-gear)"
 			}
 		],
 		"menus": {
 			"view/title": [
 				{
-					"command": "gpu-fleet-viewer.configureServers",
-					"when": "view == gpuServerList",
+					"command": "serverlens.configureServers",
+					"when": "view == serverlens.servers",
 					"group": "navigation"
 				},
 				{
-					"command": "gpu-fleet-viewer.refresh",
-					"when": "view == gpuServerList",
+					"command": "serverlens.refresh",
+					"when": "view == serverlens.servers",
 					"group": "navigation"
 				},
 				{
-					"command": "gpu-fleet-viewer.addServer",
-					"when": "view == gpuServerList",
+					"command": "serverlens.addServer",
+					"when": "view == serverlens.servers",
 					"group": "navigation"
 				}
 			],
 			"view/item/context": [
 				{
-					"command": "gpu-fleet-viewer.connectSsh",
-					"when": "view == gpuServerList && viewItem == server",
+					"command": "serverlens.connectSsh",
+					"when": "view == serverlens.servers && viewItem == server",
 					"group": "inline"
 				}
 			]
 		},
 		"configuration": {
-			"title": "GPU Fleet Viewer",
+			"title": "ServerLens",
 			"properties": {
-				"gpu-fleet-viewer.language": {
+				"serverlens.language": {
 					"type": "string",
 					"enum": [
 						"auto",
@@ -150,12 +154,12 @@
 					"default": "auto",
 					"description": "Dashboard language / 仪表盘语言"
 				},
-				"gpu-fleet-viewer.sshConfigPath": {
+				"serverlens.sshConfigPath": {
 					"type": "string",
 					"default": "~/.ssh/config",
 					"description": "Path to SSH config file"
 				},
-				"gpu-fleet-viewer.targets": {
+				"serverlens.targets": {
 					"type": "array",
 					"items": {
 						"type": "string"
@@ -163,7 +167,7 @@
 					"default": [],
 					"description": "List of SSH hosts to monitor"
 				},
-				"gpu-fleet-viewer.additionalHosts": {
+				"serverlens.additionalHosts": {
 					"type": "array",
 					"items": {
 						"type": "string"
@@ -171,7 +175,7 @@
 					"default": [],
 					"description": "Additional SSH targets (host alias, IP address, or user@host)"
 				},
-				"gpu-fleet-viewer.ignoredHosts": {
+				"serverlens.ignoredHosts": {
 					"type": "array",
 					"items": {
 						"type": "string"
@@ -179,114 +183,114 @@
 					"default": [],
 					"description": "List of SSH hosts to ignore"
 				},
-				"gpu-fleet-viewer.autoRefresh": {
+				"serverlens.autoRefresh": {
 					"type": "boolean",
 					"default": true,
 					"description": "Enable auto-refresh of GPU status"
 				},
-				"gpu-fleet-viewer.refreshInterval": {
+				"serverlens.refreshInterval": {
 					"type": "number",
 					"default": 5,
 					"minimum": 2,
 					"maximum": 300,
 					"description": "Refresh interval in seconds"
 				},
-				"gpu-fleet-viewer.sshTimeout": {
+				"serverlens.sshTimeout": {
 					"type": "number",
 					"default": 8,
 					"minimum": 2,
 					"maximum": 60,
 					"description": "SSH connection and command timeout in seconds"
 				},
-				"gpu-fleet-viewer.maxConcurrentHosts": {
+				"serverlens.maxConcurrentHosts": {
 					"type": "number",
 					"default": 8,
 					"minimum": 1,
 					"maximum": 32,
 					"description": "Maximum number of SSH hosts queried concurrently"
 				},
-				"gpu-fleet-viewer.pauseWhenHidden": {
+				"serverlens.pauseWhenHidden": {
 					"type": "boolean",
 					"default": true,
 					"description": "Pause automatic SSH refreshes while the dashboard is hidden"
 				},
-				"gpu-fleet-viewer.compactLayout": {
+				"serverlens.compactLayout": {
 					"type": "boolean",
 					"default": true,
 					"description": "Use a dense multi-column layout for servers with many GPUs"
 				},
-				"gpu-fleet-viewer.showUtilization": {
+				"serverlens.showUtilization": {
 					"type": "boolean",
 					"default": true,
 					"description": "Show GPU utilization"
 				},
-				"gpu-fleet-viewer.showTemperature": {
+				"serverlens.showTemperature": {
 					"type": "boolean",
 					"default": true,
 					"description": "Show GPU temperature"
 				},
-				"gpu-fleet-viewer.showPower": {
+				"serverlens.showPower": {
 					"type": "boolean",
 					"default": true,
 					"description": "Show power draw and power limit"
 				},
-				"gpu-fleet-viewer.showFanSpeed": {
+				"serverlens.showFanSpeed": {
 					"type": "boolean",
 					"default": true,
 					"description": "Show fan speed when reported by the GPU"
 				},
-				"gpu-fleet-viewer.showProcesses": {
+				"serverlens.showProcesses": {
 					"type": "boolean",
 					"default": true,
 					"description": "Show GPU processes, owners, PIDs, and memory usage in a collapsible section"
 				},
-				"gpu-fleet-viewer.showHostHealth": {
+				"serverlens.showHostHealth": {
 					"type": "boolean",
 					"default": true,
 					"description": "Show lightweight CPU load, RAM, root disk, uptime, and SSH latency metrics"
 				},
-				"gpu-fleet-viewer.enableSlurmIntegration": {
+				"serverlens.enableSlurmIntegration": {
 					"type": "boolean",
 					"default": true,
 					"description": "Automatically associate GPU processes with Slurm jobs when Slurm is available"
 				},
-				"gpu-fleet-viewer.slurmRefreshInterval": {
+				"serverlens.slurmRefreshInterval": {
 					"type": "number",
 					"default": 30,
 					"minimum": 5,
 					"maximum": 300,
 					"description": "Seconds between Slurm job metadata refreshes"
 				},
-				"gpu-fleet-viewer.availabilityRequireNoProcesses": {
+				"serverlens.availabilityRequireNoProcesses": {
 					"type": "boolean",
 					"default": true,
 					"description": "Require a GPU to have no compute processes before it is considered available"
 				},
-				"gpu-fleet-viewer.availabilityMaxMemoryMiB": {
+				"serverlens.availabilityMaxMemoryMiB": {
 					"type": "number",
 					"default": 512,
 					"minimum": 0,
 					"maximum": 1048576,
 					"description": "Maximum used GPU memory in MiB for an available GPU"
 				},
-				"gpu-fleet-viewer.availabilityMaxUtilization": {
+				"serverlens.availabilityMaxUtilization": {
 					"type": "number",
 					"default": 10,
 					"minimum": 0,
 					"maximum": 100,
 					"description": "Maximum GPU utilization percentage for an available GPU"
 				},
-				"gpu-fleet-viewer.showStatusBar": {
+				"serverlens.showStatusBar": {
 					"type": "boolean",
 					"default": true,
 					"description": "Show aggregate GPU availability in the VS Code status bar"
 				},
-				"gpu-fleet-viewer.enableNotifications": {
+				"serverlens.enableNotifications": {
 					"type": "boolean",
 					"default": false,
 					"description": "Show notifications when a GPU first crosses a warning threshold"
 				},
-				"gpu-fleet-viewer.notificationEvents": {
+				"serverlens.notificationEvents": {
 					"type": "array",
 					"items": {
 						"type": "string",
@@ -304,41 +308,41 @@
 					],
 					"description": "State transitions that may produce notifications when notifications are enabled"
 				},
-				"gpu-fleet-viewer.notificationCooldownSeconds": {
+				"serverlens.notificationCooldownSeconds": {
 					"type": "number",
 					"default": 60,
 					"minimum": 0,
 					"maximum": 3600,
-					"description": "Minimum time between GPU Fleet notification batches"
+					"description": "Minimum time between ServerLens notification batches"
 				},
-				"gpu-fleet-viewer.memoryWarningThreshold": {
+				"serverlens.memoryWarningThreshold": {
 					"type": "number",
 					"default": 85,
 					"minimum": 1,
 					"maximum": 100,
 					"description": "Memory usage percentage that triggers warning styling"
 				},
-				"gpu-fleet-viewer.temperatureWarningThreshold": {
+				"serverlens.temperatureWarningThreshold": {
 					"type": "number",
 					"default": 80,
 					"minimum": 1,
 					"maximum": 120,
 					"description": "Temperature in Celsius that triggers warning styling"
 				},
-				"gpu-fleet-viewer.powerWarningThreshold": {
+				"serverlens.powerWarningThreshold": {
 					"type": "number",
 					"default": 90,
 					"minimum": 1,
 					"maximum": 100,
 					"description": "Power limit percentage that triggers warning styling"
 				},
-				"gpu-fleet-viewer.researchUser": {
+				"serverlens.researchUser": {
 					"type": "string",
 					"default": "",
 					"description": "Remote username used by the My tasks filter.",
 					"scope": "application"
 				},
-				"gpu-fleet-viewer.visibleGpus": {
+				"serverlens.visibleGpus": {
 					"type": "object",
 					"default": {},
 					"additionalProperties": {

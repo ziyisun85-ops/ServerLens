@@ -31,7 +31,7 @@ async function main() {
     dom.window.document.getElementById('preferences-form').dispatchEvent(new dom.window.Event('submit',{cancelable:true}));
     await new Promise(resolve => setTimeout(resolve, 10));
     dom.window.document.getElementById('preferences-close').click();
-    assert.strictEqual(dom.window.document.getElementById('page-title').textContent,'GPU Fleet');
+    assert.strictEqual(dom.window.document.getElementById('page-title').textContent,'ServerLens');
     assert.strictEqual(dom.window.document.querySelectorAll('.summary-meter').length,3,'Only continuous resource metrics need progress tracks.');
     assert.strictEqual(dom.window.document.querySelectorAll('.user-chip.active').length,1,'Unselected users must not share the selected state.');
     dom.window.document.querySelector('.summary-filter[data-filter=available]').click();

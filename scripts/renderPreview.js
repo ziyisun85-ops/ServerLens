@@ -110,7 +110,7 @@ const data = [
 const previewMessage = {
     type: 'update',
     preferences: { ...Object.fromEntries(preferenceFields.map(field => [field.key, field.default])), researchUser: 'alice' },
-    title: 'GPU Fleet',
+    title: 'ServerLens',
     data,
     settings: {
         compactLayout: true,

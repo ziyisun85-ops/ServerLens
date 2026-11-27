@@ -1,8 +1,8 @@
 {
   "settings": "Settings",
   "refresh": "Refresh",
-  "dashboardTitle": "GPU Fleet",
-  "panelTitle": "GPU Fleet",
+  "dashboardTitle": "ServerLens",
+  "panelTitle": "ServerLens",
   "waiting": "Waiting for data…",
   "refreshing": "Refreshing…",
   "refreshQueued": "Refresh queued…",
