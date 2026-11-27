@@ -18,3 +18,5 @@ SECURITY.md
 SUPPORT.md
 CODE_OF_CONDUCT.md
 *.vsix
+*.log
+release-notes.md

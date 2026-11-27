@@ -1,5 +1,12 @@
 # Changelog
 
+## ServerLens 0.1.1 - 2026-11-28
+
+First version published to the Visual Studio Marketplace. The extension code is the same as 0.1.0 (see below).
+
+- The 0.1.0 package on GitHub Releases accidentally contained a CI test log (`vscode-test.log`). The release workflow now writes the log outside the package folder, `*.log` is excluded from packaging, and CI and the release workflow fail if the package contains anything other than the runtime files.
+- Release workflow: artifact actions updated to v7 (Node 24).
+
 ## ServerLens 0.1.0 - 2026-11-28
 
 First release of ServerLens (preview), forked from GPU Fleet Viewer 1.4.3. Requires VS Code 1.82 or later. Compared with GPU Fleet Viewer:

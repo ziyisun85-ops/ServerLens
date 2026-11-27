@@ -74,9 +74,11 @@ jobs:
         run: |
           set -o pipefail
           command -v xvfb-run >/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q xvfb; }
-          xvfb-run -a npm run test:vscode 2>&1 | tee vscode-test.log
-          version=$(grep -a -m1 'ServerLens extension tests in VS Code' vscode-test.log | sed 's/.*VS Code //' || true)
-          echo "::notice title=VS Code tests::$(grep -a -c '✓' vscode-test.log || true) checks passed (VS Code ${version:-unknown})"
+          # The log goes outside the checkout so it can never end up in the package.
+          log="$RUNNER_TEMP/vscode-test.log"
+          xvfb-run -a npm run test:vscode 2>&1 | tee "$log"
+          version=$(grep -a -m1 'ServerLens extension tests in VS Code' "$log" | sed 's/.*VS Code //' || true)
+          echo "::notice title=VS Code tests::$(grep -a -c '✓' "$log" || true) checks passed (VS Code ${version:-unknown})"
 
       - name: Package
         id: package
@@ -86,8 +88,27 @@ jobs:
           npx vsce package --out "serverlens-$version.vsix"
           echo "vsix=serverlens-$version.vsix" >> "$GITHUB_OUTPUT"
 
+      - name: Check the package contents
+        shell: bash
+        env:
+          VSIX: ${{ steps.package.outputs.vsix }}
+        run: |
+          # Only runtime files may ship; anything else (logs, sources, test output) fails the build.
+          files=$(unzip -Z1 "$VSIX")
+          count=$(printf '%s\n' "$files" | grep -c . || true)
+          if [ "$count" -lt 10 ] || ! printf '%s\n' "$files" | grep -qx 'extension/out/extension.js'; then
+            echo "::error::$VSIX looks incomplete ($count files)."
+            exit 1
+          fi
+          unexpected=$(printf '%s\n' "$files" | grep -v -E '^(\[Content_Types\]\.xml|extension\.vsixmanifest|extension/(package\.json|readme\.md|changelog\.md|LICENSE\.txt|NOTICE|out/.+\.(js|json)|resources/.+))$' || true)
+          if [ -n "$unexpected" ]; then
+            echo "::error::Unexpected files in $VSIX: $(echo $unexpected)"
+            exit 1
+          fi
+          echo "::notice title=Package::$count files in $VSIX"
+
       - name: Upload the package
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: vsix
           path: ${{ steps.package.outputs.vsix }}
@@ -107,7 +128,7 @@ jobs:
           persist-credentials: false
 
       - name: Download the package
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: vsix
 
@@ -140,7 +161,7 @@ jobs:
           node-version: 22
 
       - name: Download the package
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: vsix
 
