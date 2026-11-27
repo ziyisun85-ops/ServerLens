@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve GPU Fleet Viewer.
+Thanks for helping improve ServerLens.
 
 ## Before opening a change
 
@@ -30,6 +30,6 @@ python3 -m http.server 8765 --bind 127.0.0.1
 - Add or update tests for behavior changes.
 - Update README.md or CHANGELOG.md when users need to know about the change.
 - Confirm `npm test` passes.
-- Use synthetic server and user names in fixtures and screenshots.
+- Use synthetic server and user names in fixtures and test data. Do not commit screenshots or other images; only the extension icons in `resources/` are tracked.
 
 By contributing, you agree that your contribution is licensed under Apache-2.0.

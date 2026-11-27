@@ -1,0 +1,5 @@
+/dev/nvme0n1p2 / ext4 rw,relatime 0 0
+/dev/sda1 /data xfs rw,relatime 0 0
+10.0.0.5:/export/home /home nfs4 rw,relatime 0 0
+lustre@tcp:/scratch /mnt/lustre lustre rw 0 0
+tmpfs /dev/shm tmpfs rw 0 0

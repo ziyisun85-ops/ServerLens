@@ -1,3 +1,5 @@
+// Dashboard preview renderer (from GPU Fleet Viewer).
+// Modified for ServerLens (2026): sample host health translated to the new CPU/memory/disk fields.
 const fs = require('fs');
 const path = require('path');
 const Module = require('module');
@@ -15,6 +17,24 @@ const { preferenceFields } = require('../out/preferences');
 const panel = Object.create(GpuViewPanel.prototype);
 let html = panel.getWebviewContent();
 const nonce = html.match(/<script nonce="([^"]+)">/)[1];
+
+
+// The upstream preview described host health as one object; ServerLens collects CPU, memory,
+// disks and system facts separately, so translate the same sample values.
+function legacyHealth(h) {
+    const kib = mib => mib * 1024;
+    return {
+        cpu: { usagePercent: Math.min(100, h.load1 / 32 * 100), logicalCores: 32, load1: h.load1, load5: h.load5, load15: h.load15 },
+        memory: { totalKiB: kib(h.memoryTotalMiB), usedKiB: kib(h.memoryUsedMiB), availableKiB: kib(h.memoryTotalMiB - h.memoryUsedMiB),
+            usedPercent: h.memoryUsedMiB / h.memoryTotalMiB * 100, freeKiB: 0, buffersKiB: 0, cachedKiB: 0, shmemKiB: 0,
+            swapTotalKiB: 0, swapUsedKiB: 0, swapPercent: 0, availableEstimated: false },
+        disks: { disks: [{ id: '/', mountPoint: '/', alsoMountedAt: [], pinnedPaths: [], pinned: false, source: '/dev/nvme0n1p2', fsType: 'ext4', network: false,
+            totalKiB: kib(h.diskTotalMiB), usedKiB: kib(h.diskUsedMiB), availKiB: kib(h.diskTotalMiB - h.diskUsedMiB),
+            usedPercent: Math.ceil(h.diskUsedMiB / h.diskTotalMiB * 100) }], hidden: [], otherQuotas: [], quotaToolAvailable: false,
+            missingPinnedPaths: [], partial: false, typesFromMounts: false },
+        system: { uptimeSeconds: h.uptimeSeconds }
+    };
+}
 
 function gpu(index, name, used, total, utilization, temperature, power, limit, fan, processes = []) {
     return {
@@ -73,8 +93,8 @@ const data = [
     {
         host: 'a6000-east',
         collectedAt: Date.now(), latencyMs: 84, lastSuccessAt: Date.now(), stale: false,
-        healthAvailable: true, slurmAvailable: false,
-        health: { load1: 3.2, load5: 2.8, load15: 2.4, memoryTotalMiB: 262144, memoryUsedMiB: 98304, diskTotalMiB: 1953514, diskUsedMiB: 702118, uptimeSeconds: 918240 },
+        slurmAvailable: false,
+        ...legacyHealth({ load1: 3.2, load5: 2.8, load15: 2.4, memoryTotalMiB: 262144, memoryUsedMiB: 98304, diskTotalMiB: 1953514, diskUsedMiB: 702118, uptimeSeconds: 918240 }),
         metadata: { alias: 'Vision Lab A', group: 'A6000', favorite: true },
         gpus: [
             gpu(0, 'NVIDIA RTX A6000', 10, 49140, 0, 31, 22, 300, 30),
@@ -84,22 +104,22 @@ const data = [
     {
         host: 'a6000-west',
         collectedAt: Date.now(), latencyMs: 96, lastSuccessAt: Date.now(), stale: false,
-        healthAvailable: true, slurmAvailable: false,
-        health: { load1: 1.1, load5: 1.4, load15: 1.2, memoryTotalMiB: 262144, memoryUsedMiB: 65536, diskTotalMiB: 1953514, diskUsedMiB: 542118, uptimeSeconds: 518240 },
+        slurmAvailable: false,
+        ...legacyHealth({ load1: 1.1, load5: 1.4, load15: 1.2, memoryTotalMiB: 262144, memoryUsedMiB: 65536, diskTotalMiB: 1953514, diskUsedMiB: 542118, uptimeSeconds: 518240 }),
         gpus: [
             gpu(0, 'NVIDIA RTX A6000', 10, 49140, 0, 34, 25, 300, 30),
             gpu(1, 'NVIDIA RTX A6000', 10, 49140, 0, 33, 24, 300, 30)
         ]
     },
     { host: 'v100-cluster', collectedAt: Date.now(), latencyMs: 71, lastSuccessAt: Date.now(), stale: false,
-        healthAvailable: true, slurmAvailable: true,
-        health: { load1: 18.4, load5: 16.2, load15: 14.8, memoryTotalMiB: 524288, memoryUsedMiB: 412720, diskTotalMiB: 3907028, diskUsedMiB: 1884210, uptimeSeconds: 1818240 },
+        slurmAvailable: true,
+        ...legacyHealth({ load1: 18.4, load5: 16.2, load15: 14.8, memoryTotalMiB: 524288, memoryUsedMiB: 412720, diskTotalMiB: 3907028, diskUsedMiB: 1884210, uptimeSeconds: 1818240 }),
         metadata: { alias: 'V100 Research Cluster', group: 'Shared Lab' }, gpus: v100s },
     {
         host: 'studio-4090',
         collectedAt: Date.now(), latencyMs: 42, lastSuccessAt: Date.now(), stale: false,
-        healthAvailable: true, slurmAvailable: false,
-        health: { load1: 4.7, load5: 4.3, load15: 3.9, memoryTotalMiB: 131072, memoryUsedMiB: 74218, diskTotalMiB: 1953514, diskUsedMiB: 1224118, uptimeSeconds: 318240 },
+        slurmAvailable: false,
+        ...legacyHealth({ load1: 4.7, load5: 4.3, load15: 3.9, memoryTotalMiB: 131072, memoryUsedMiB: 74218, diskTotalMiB: 1953514, diskUsedMiB: 1224118, uptimeSeconds: 318240 }),
         gpus: [
             gpu(0, 'NVIDIA GeForce RTX 4090 D', 24017, 24564, 96, 72, 420, 450, 72, [trainingProcess(38291, 'alice', 23840)]),
             gpu(1, 'NVIDIA GeForce RTX 4090 D', 10, 24564, 0, 35, 18, 450, 30)
@@ -110,8 +130,7 @@ const data = [
 const previewMessage = {
     type: 'update',
     preferences: { ...Object.fromEntries(preferenceFields.map(field => [field.key, field.default])), researchUser: 'alice' },
-    aiConfigured: false,
-    title: 'GPU Fleet',
+    title: 'ServerLens',
     data,
     settings: {
         compactLayout: true,
@@ -126,7 +145,10 @@ const previewMessage = {
         availabilityMaxUtilization: 10,
         memoryWarningThreshold: 85,
         temperatureWarningThreshold: 80,
-        powerWarningThreshold: 90
+        powerWarningThreshold: 90,
+        diskWarningThreshold: 70,
+        diskCriticalThreshold: 90,
+        byteUnits: 'iec'
     },
     summary: {
         serversOnline: 4,

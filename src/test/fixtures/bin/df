@@ -1,0 +1,36 @@
+#!/bin/sh
+# Fake df: -P -k -T [-l] [path]
+type=0; local=0; path=
+for arg in "$@"; do
+  case "$arg" in
+    -T) type=1;; -l) local=1;; -P|-k) ;; /*) path=$arg;;
+  esac
+done
+if [ "$FAKE_MODE" = df-notype ] && [ "$type" = 1 ]; then echo "df: invalid option -- 'T'" >&2; exit 1; fi
+if [ -n "$path" ]; then
+  echo "Filesystem     Type  1024-blocks       Used  Available Capacity Mounted on"
+  case "$path" in
+    */data|*/data/*|/data*) echo "/dev/sda1      xfs    7811937280 7265104872  546832408      94% /data";;
+    *) echo "/dev/nvme0n1p2 ext4   1921724676  576517402 1247525036      32% /";;
+  esac
+  exit 0
+fi
+if [ "$type" = 1 ]; then
+  echo "Filesystem            Type     1024-blocks       Used  Available Capacity Mounted on"
+  echo "udev                  devtmpfs    65826704          0   65826704       0% /dev"
+  echo "/dev/nvme0n1p2        ext4      1921724676  576517402 1247525036      32% /"
+  echo "tmpfs                 tmpfs       65858148      12000   65846148       1% /dev/shm"
+  echo "/dev/sda1             xfs       7811937280 7265104872  546832408      94% /data"
+  echo "/dev/sda1             xfs       7811937280 7265104872  546832408      94% /home/alice/data link"
+  echo "/dev/loop3            squashfs       65536      65536          0     100% /snap/core20/2318"
+  echo "overlay               overlay   1921724676  576517402 1247525036      32% /var/lib/docker/overlay2/abc/merged"
+  if [ "$local" = 0 ]; then
+    echo "10.0.0.5:/export/home nfs4     52428800000 15728640000 36700160000      30% /home"
+    echo "lustre@tcp:/scratch   lustre   107374182400 21474836480 85899345920      20% /mnt/lustre"
+  fi
+else
+  echo "Filesystem     1024-blocks       Used  Available Capacity Mounted on"
+  echo "/dev/nvme0n1p2  1921724676  576517402 1247525036      32% /"
+  echo "/dev/sda1       7811937280 7265104872  546832408      94% /data"
+fi
+exit 0

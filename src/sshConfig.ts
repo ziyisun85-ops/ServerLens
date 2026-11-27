@@ -2,9 +2,23 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
-export function sshConfigArguments(configPath?: string): string[] {
-    return configPath && configPath !== '~/.ssh/config'
-        ? ['-F',configPath.startsWith('~/') ? path.join(os.homedir(),configPath.slice(2)) : configPath] : [];
+/**
+ * Expands a leading "~" (followed by "/" or "\\", or alone) to the home directory, the same way
+ * for parsing and for `ssh -F`, which does not expand "~" itself.
+ * Modified for ServerLens (2026): one resolver for the parser and the ssh arguments.
+ */
+export function resolveSshConfigPath(configPath: string): string {
+    return /^~(?=$|[\\/])/.test(configPath) ? path.join(os.homedir(), configPath.slice(1)) : configPath;
+}
+
+/** The setting as one value for every reader: trimmed, and the default when empty or not a string. */
+export function normalizeSshConfigPath(value: unknown): string {
+    return typeof value === 'string' && value.trim() ? value.trim() : '~/.ssh/config';
+}
+
+export function sshConfigArguments(configPath?: unknown): string[] {
+    const resolved = resolveSshConfigPath(normalizeSshConfigPath(configPath));
+    return path.resolve(resolved) === path.join(os.homedir(), '.ssh', 'config') ? [] : ['-F', resolved];
 }
 
 export interface SshHost {
@@ -17,8 +31,8 @@ export interface SshHost {
 export class SshConfigParser {
     constructor() {}
 
-    public parse(configPath: string): SshHost[] {
-        const resolvedPath = this.resolveHome(configPath);
+    public parse(configPath: unknown): SshHost[] {
+        const resolvedPath = this.resolveHome(normalizeSshConfigPath(configPath));
         if (!fs.existsSync(resolvedPath)) {
             return [];
         }
@@ -65,9 +79,6 @@ export class SshConfigParser {
     }
 
     private resolveHome(filepath: string): string {
-        if (filepath.startsWith('~')) {
-            return path.join(os.homedir(), filepath.slice(1));
-        }
-        return filepath;
+        return resolveSshConfigPath(filepath);
     }
 }

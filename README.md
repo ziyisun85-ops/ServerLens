@@ -1,193 +1,176 @@
-# GPU Fleet Viewer
+# ServerLens
 
-[![CI](https://github.com/yruichen/gpu-fleet-viewer/actions/workflows/ci.yml/badge.svg)](https://github.com/yruichen/gpu-fleet-viewer/actions/workflows/ci.yml)
-[![Marketplace](https://img.shields.io/visual-studio-marketplace/v/yruichen.gpu-fleet-viewer?label=Marketplace&logo=visualstudiocode)](https://marketplace.visualstudio.com/items?itemName=yruichen.gpu-fleet-viewer)
-[![Marketplace installs](https://img.shields.io/visual-studio-marketplace/i/yruichen.gpu-fleet-viewer)](https://marketplace.visualstudio.com/items?itemName=yruichen.gpu-fleet-viewer)
-[![Latest release](https://img.shields.io/github/v/release/yruichen/gpu-fleet-viewer)](https://github.com/yruichen/gpu-fleet-viewer/releases/latest)
-[![License](https://img.shields.io/github/license/yruichen/gpu-fleet-viewer)](LICENSE.txt)
+在 VS Code 侧边栏里同时查看多台远程服务器的 GPU、CPU、内存、磁盘和个人配额。面向在多台共享 GPU 服务器上做实验的科研人员。
 
-A fast, privacy-friendly research workstation for finding, understanding, and using NVIDIA GPUs across SSH servers without leaving VS Code.
+ServerLens 只通过 SSH 执行只读命令，不需要在服务器上安装 Agent、数据库或监控服务，也不需要 root 权限。
 
-![GPU Fleet Viewer 1.1 research dashboard](docs/dashboard-1.1.0.png)
+## 功能
 
-## Highlights
+### 服务器卡片（侧边栏 Monitor 视图）
 
-- Find available GPUs across every configured SSH host with explainable availability rules.
-- Search and filter by server, GPU model, user, process command, or Slurm job.
-- Responsive server bands and independent process inspectors for dense 8-GPU machines.
-- GPU utilization, memory, temperature, power draw/limit, and fan speed.
-- Click-to-inspect process details: owner, PID, full command, runtime, GPU memory, and optional Slurm job.
-- One-click research terminals with a stable GPU UUID in `CUDA_VISIBLE_DEVICES`; commands are prepared but never auto-executed.
-- Lightweight host health for CPU load, RAM, root disk, uptime, and SSH latency.
-- Local server aliases, groups, favorites, and duplicate physical-host detection.
-- Configurable metrics, warning thresholds, notifications, refresh interval, and SSH timeout.
-- Available-GPU count in the VS Code status bar.
-- Resource filters for minimum free memory per GPU and matching GPU count per server, plus a **My tasks** filter.
-- In-dashboard settings for servers, refresh behavior, display, availability rules, notifications, and optional AI.
-- Compact AI chat with a conversation sidebar, per-chat permission modes, Markdown, streaming, local SSH task investigation, and your own OpenAI-compatible or Anthropic endpoint.
-- Per-server GPU selection, parent-process tracing, authorized log progress, and persistent release/task-end/timed reminders.
-- Direct **Connect SSH** action for Remote - SSH users.
-- High-performance SSH snapshots, bounded concurrency, hidden-panel pausing, cached Slurm metadata, duplicate-query suppression, and overlapping-refresh protection.
-- No telemetry and no stored passwords or private keys.
+每台服务器一张卡片，从上到下依次是：
 
-## Requirements
+1. 服务器名称和连接状态：绿色在线、黄色数据过期（连接失败，显示最后一次数据）、红色离线、蓝色连接中。
+2. GPU：每张卡的利用率和显存，左侧圆点表示该卡是否满足空闲规则。
+3. CPU 使用率和负载、内存占用；Swap 使用超过 10% 时显示 Swap。
+4. 存储：每个挂载点一行，进度条低于 70% 为绿色，70% 到 90% 为黄色，达到 90% 为红色（阈值可改）。
+5. 详细信息：GPU 进程、CPU 型号和核心数、内存明细、系统信息、各项数据的更新时间、目录容量分析。
 
-- Desktop VS Code 1.80 or newer, with the extension installed **locally**. Local SSH is not available in browser-only VS Code.
-- `ssh` available on the computer running VS Code.
-- `nvidia-smi` installed on each monitored server. Advanced task inspection requires Linux `/proc` and `python3` on the SSH host; basic GPU monitoring does not.
-- Non-interactive SSH authentication, normally an SSH key and `BatchMode=yes` compatibility.
-- Optional: [Remote - SSH](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-ssh) for the **Connect SSH** button.
+点击卡片标题可以折叠，折叠后只显示一行摘要。鼠标悬停在任意一行上可以看到完整数据（例如 GPU 温度和功耗、挂载点的设备和文件系统类型）。右键卡片或磁盘可以刷新单台服务器、连接 Remote-SSH、分析目录、静音该磁盘的提醒。
 
-## Install
+连接失败时，卡片会显示具体原因（例如“SSH 认证失败”“服务器不可达”）、ssh 的原始报错、最后一次成功更新的时间和下次自动重试的时间。
 
-Install [GPU Fleet Viewer from the Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=yruichen.gpu-fleet-viewer), search for `GPU Fleet Viewer` in the VS Code Extensions view, or run:
+### 磁盘监控
 
-```bash
-code --install-extension yruichen.gpu-fleet-viewer
+- 自动识别有效挂载点：根目录、`/home`、`/data`、`/mnt/*`、NFS、Lustre、sshfs、CIFS 等都会显示，`tmpfs`、`overlay`、`squashfs`、`/proc`、`/run`、`/snap/*` 等系统挂载默认隐藏。
+- 同一个文件系统有多个挂载点时（bind mount、btrfs 子卷、同一个 NFS 导出挂载多次）只显示一次，其余挂载点在悬停提示里列出。
+- 固定显示的路径（`serverlens.pinnedMounts`）总是排在最前面。填写的路径不是挂载点时，会显示它所在的文件系统，例如 `~/projects` 在根分区上就显示根分区。
+- 个人配额与磁盘剩余空间分开显示：服务器上有 `quota` 命令时读取 `quota -v`，有 Lustre 挂载时读取 `lfs quota`。超过软限制时配额行变红。
+- 网络存储无响应时 `df` 会卡住。ServerLens 会在超时后改为只读取本地文件系统，并在卡片里提示“df 超时，仅显示本地文件系统”。
+- 容量提醒：磁盘达到严重阈值时弹出一次通知，可以选择“稍后提醒（24 小时）”或“静音此磁盘”。使用率降到阈值以下 2 个百分点后才会再次提醒，重启 VS Code 也不会重复提醒同一次越线。
+
+### CPU 和内存
+
+- CPU 使用率由相邻两次 `/proc/stat` 采样计算，悬停可看到用户态、内核态、IO 等待和被抢占（steal）的占比。第一次采集时在服务器上间隔 0.5 秒读两次，不需要等下一轮。
+- 显示逻辑核数、物理核数，以及当前 SSH 会话可用的核数（容器或 cgroup 限制时会更少）和 1/5/15 分钟负载。
+- 内存使用 `/proc/meminfo` 的 `MemAvailable`，页缓存不算作已用。老内核没有 `MemAvailable` 时用 `MemFree + Buffers + Cached + SReclaimable - Shmem` 估算，并标注“估算值”。
+
+### GPU（沿用 GPU Fleet Viewer）
+
+型号、利用率、显存、温度、功耗、风扇、计算进程（用户、PID、显存、运行时间、命令）、Slurm 作业、空闲 GPU 判定和“查找空闲 GPU”。没有 `nvidia-smi` 的服务器显示为“仅 CPU”，CPU、内存和磁盘照常显示。
+
+### 目录容量分析
+
+在卡片详细信息里点“分析目录占用…”，或运行命令 **ServerLens: Analyze Storage…**。可选：
+
+- Home 目录、Conda 环境与包缓存、pip 缓存、Hugging Face 缓存、PyTorch 缓存、整个 `~/.cache`；
+- `serverlens.storagePaths` 里配置的目录（项目、数据集、Checkpoints、训练日志等）；
+- 手动输入的路径。
+
+扫描用 `du -x -k -d <深度>`，以 `nice -n 19` 和 `ionice -c3`（服务器上有时）的低优先级运行，并受 `timeout` 限制。同一台服务器同一时间只能有一个扫描，可以随时取消，取消时会结束服务器上的 `du` 进程。结果按占用从大到小排列。扫描只能由你手动触发，只读，不提供删除功能。
+
+### 仪表盘和 Servers 树（原有功能）
+
+- 仪表盘（编辑器标签页）保留 GPU Fleet Viewer 的全部功能：筛选、排序、进程检查器、收藏和分组、打开 GPU 终端、复制 `CUDA_VISIBLE_DEVICES`、设置对话框。服务器行新增 CPU、内存和最满的磁盘。
+- Servers 树保留原来的 Dashboard 入口、服务器列表和行内的 Connect 按钮，每台服务器后面显示状态，例如 `3/8 GPU free · /data 93%`。
+- 状态栏显示空闲 GPU 数和将满磁盘数，点击打开侧边栏。VS Code 启动后状态栏就会出现；默认在侧边栏、Servers 树或仪表盘可见时才采集数据（见 `serverlens.pauseWhenHidden`）。
+
+## 安装
+
+**从扩展市场安装（推荐）：** 在 VS Code 扩展视图中搜索 `ServerLens`（发布者 `ziyisun85-ops`），点击安装。也可以在终端运行：
+
+```sh
+code --install-extension ziyisun85-ops.serverlens
 ```
 
-For offline installation, download the latest `.vsix` from [GitHub Releases](https://github.com/yruichen/gpu-fleet-viewer/releases/latest), then run:
+**离线安装：** 从 [GitHub Releases](https://github.com/ziyisun85-ops/ServerLens/releases) 下载 `serverlens-<版本>.vsix`，在扩展视图右上角 `…` → **从 VSIX 安装…** 中选择它，或运行 `code --install-extension serverlens-<版本>.vsix`。
 
-```bash
-code --install-extension gpu-fleet-viewer-1.4.0.vsix
-```
+安装后点击活动栏中的 ServerLens 图标。ServerLens 目前是预览版（Preview）。
 
-Reload VS Code and open **GPU Fleet** from the Activity Bar.
+首次从一个新的发布者安装扩展时，VS Code 会询问是否信任该发布者，确认即可。
 
-## Configure servers
+ServerLens 与 GPU Server Viewer、GPU Fleet Viewer 使用不同的扩展 ID 和设置前缀，可以同时安装。首次启动时会把 `gpu-fleet-viewer.*`（或 `gpu-server-viewer.*`）中的同名设置复制一次。
 
-The extension discovers concrete hosts from `~/.ssh/config`; wildcard entries are ignored. A minimal entry looks like this:
+### 前提条件
 
-```sshconfig
-Host gpu-node-01
-    HostName 192.0.2.10
-    User researcher
-    IdentityFile ~/.ssh/id_ed25519
-```
+- VS Code 1.82 或更高版本。
+- 本机有 OpenSSH 客户端（`ssh` 在 PATH 中）。
+- 能用密钥免密登录服务器（ServerLens 使用 `BatchMode=yes`，不会弹出密码输入）。可以先在终端执行一次 `ssh <host>`，确认主机密钥已受信任。
+- 服务器是 Linux，有 `/bin/sh` 和常见命令（`awk`、`df`、`ps`）。`nvidia-smi`、`timeout`、`quota`、`lfs`、`ionice` 有则使用，没有也能工作。
+- “连接”按钮需要安装微软的 Remote - SSH 扩展。
 
-You can also run **GPU Fleet Viewer: Add Server** and enter an SSH alias, hostname, IP address, or `user@host`. Use **Configure Servers** from the view toolbar to hide hosts you do not want to monitor.
+## 选择要监控的服务器
 
-## Research workflow
+默认监控 `~/.ssh/config` 中所有不含通配符的 `Host`。服务器较多时建议只选常用的几台：
 
-1. Run **GPU Fleet Viewer: Find Available GPU**, or filter the dashboard to **Available**.
-2. Review the availability explanation, free memory, host health, and active users.
-3. Select **Open terminal**. The extension creates an integrated terminal and prepares an SSH command that exports `CUDA_DEVICE_ORDER=PCI_BUS_ID` and the selected GPU UUID.
-4. Inspect the command and press Enter when ready. GPU Fleet Viewer never starts or stops research jobs automatically.
+- 侧边栏标题栏 `…` → **Choose Servers**，勾选要显示的服务器；
+- 或设置 `serverlens.targets`（只监控这些别名）、`serverlens.ignoredHosts`（排除）、`serverlens.additionalHosts`（不在 SSH config 里的 `user@host`）。
 
-When Slurm is installed, the extension detects it automatically and associates local GPU processes with visible job metadata. Ordinary SSH servers continue to work without Slurm.
+超过 6 台服务器时，卡片默认折叠，只显示一行摘要。
 
-## Settings
+## 设置
 
-Open **Settings** in the dashboard for common options, or search for `GPU Fleet Viewer` in VS Code Settings. Set **My remote username** to enable **My tasks**. Resource filters combine with search, status, and user filters; available memory is a snapshot and does not guarantee that a workload will fit.
+所有设置都在 VS Code 设置的 `serverlens.*` 下，仪表盘的“设置”对话框也能修改大部分设置。
 
-Settings are saved explicitly. **Servers → Visible GPUs per server** lets you select individual cards; omitting a server selects all its cards, including future additions. Scope applies to dashboard statistics, available-GPU selection and default AI context. Existing reminders continue monitoring hidden cards. Background refreshes preserve unsaved edits, selected GPU, filters, keyboard focus, and inspector scroll. Closing settings with unsaved changes offers save or discard; resetting a section changes the draft until saved. The dashboard opens when requested; activating the extension no longer replaces your current editor.
+| 设置 | 默认值 | 说明 |
+|---|---|---|
+| `serverlens.sshConfigPath` | `~/.ssh/config` | 本机的 SSH 配置文件。只读取本机用户设置（Remote-SSH、WSL、容器窗口中也是），工作区和远程设置无效，不随设置同步 |
+| `serverlens.targets` / `ignoredHosts` / `additionalHosts` | 空 | 监控哪些服务器（见上一节） |
+| `serverlens.refreshInterval` | `5` | GPU 刷新间隔（秒） |
+| `serverlens.cpuRefreshInterval` | `5` | CPU 刷新间隔（秒） |
+| `serverlens.memoryRefreshInterval` | `5` | 内存刷新间隔（秒） |
+| `serverlens.diskRefreshInterval` | `60` | 磁盘和配额刷新间隔（秒） |
+| `serverlens.autoRefresh` | `true` | 关闭后只在手动刷新时采集 |
+| `serverlens.pauseWhenHidden` | `true` | Monitor 视图、Servers 树和仪表盘都不可见时暂停自动刷新；设为 `false` 时 VS Code 启动后即在后台采集 |
+| `serverlens.sshTimeout` | `8` | SSH 连接超时（秒）；每条远程命令也受此时间限制 |
+| `serverlens.maxConcurrentHosts` | `8` | 同时采集的服务器数 |
+| `serverlens.connectionReuse` | `true` | 每台服务器复用一个 SSH 连接（Windows 不支持，会自动关闭） |
+| `serverlens.connectionIdleSeconds` | `120` | 复用的连接空闲多久后关闭（秒） |
+| `serverlens.diskWarningThreshold` | `70` | 磁盘黄色阈值（%） |
+| `serverlens.diskCriticalThreshold` | `90` | 磁盘红色阈值（%），也是容量提醒阈值 |
+| `serverlens.diskAlerts` | `critical` | `off` 关闭；`critical` 达到红色阈值时提醒；`warning` 达到黄色和红色阈值时都提醒 |
+| `serverlens.pinnedMounts` | 空 | 固定显示的路径，如 `/data`、`~/projects`；`gpu-01:/scratch` 只对 gpu-01 生效 |
+| `serverlens.hiddenMounts` | 空 | 额外隐藏的挂载点模式，如 `/mnt/backup*` |
+| `serverlens.hiddenFilesystemTypes` | 空 | 额外隐藏的文件系统类型，如 `fuse.*` |
+| `serverlens.showAllFilesystems` | `false` | 连 tmpfs、overlay 等系统文件系统也显示 |
+| `serverlens.showQuota` | `true` | 读取个人磁盘配额 |
+| `serverlens.byteUnits` | `iec` | `iec`：KiB/MiB/GiB/TiB（1024 进制，与 `df -h`、`nvidia-smi` 一致）；`si`：kB/MB/GB/TB（1000 进制） |
+| `serverlens.storagePaths` | 空 | 目录分析的常用目录，写成 `路径` 或 `名称=路径`，如 `Checkpoints=/data/alice/ckpt` |
+| `serverlens.storageScanDepth` | `2` | 目录分析深度（1 到 4 层） |
+| `serverlens.storageScanTimeout` | `60` | 单次目录分析的时间上限（秒） |
+| `serverlens.showProcesses` | `true` | 采集并显示 GPU 进程（需要在服务器上运行 `ps`） |
+| `serverlens.enableSlurmIntegration` | `true` | 把 GPU 进程关联到 Slurm 作业 |
+| `serverlens.availabilityRequireNoProcesses` 等 | 见设置 | GPU 空闲判定规则 |
+| `serverlens.enableNotifications` | `false` | GPU 释放、服务器上下线、GPU 阈值通知 |
+| `serverlens.showStatusBar` | `true` | 状态栏摘要 |
+| `serverlens.language` | `auto` | 界面语言：跟随 VS Code、English、简体中文 |
 
-| Setting | Default | Purpose |
-| --- | ---: | --- |
-| `gpu-fleet-viewer.visibleGpus` | `{}` | Map SSH aliases to GPU indices or UUIDs; omitted alias = all, empty list = none |
-| `gpu-fleet-viewer.language` | `auto` | Follow VS Code or use English/简体中文; the dashboard toolbar also switches instantly |
-| `gpu-fleet-viewer.autoRefresh` | `true` | Refresh automatically |
-| `gpu-fleet-viewer.refreshInterval` | `5` | Refresh interval in seconds |
-| `gpu-fleet-viewer.sshTimeout` | `8` | SSH and command timeout in seconds |
-| `gpu-fleet-viewer.maxConcurrentHosts` | `8` | Bound concurrent SSH snapshots |
-| `gpu-fleet-viewer.pauseWhenHidden` | `true` | Stop automatic SSH work while the dashboard is hidden |
-| `gpu-fleet-viewer.compactLayout` | `true` | Use the dense fleet matrix |
-| `gpu-fleet-viewer.showUtilization` | `true` | Show GPU utilization |
-| `gpu-fleet-viewer.showTemperature` | `true` | Show GPU temperature |
-| `gpu-fleet-viewer.showPower` | `true` | Show power draw and limit |
-| `gpu-fleet-viewer.showFanSpeed` | `true` | Show fan speed when supported |
-| `gpu-fleet-viewer.showProcesses` | `true` | Show process inspection |
-| `gpu-fleet-viewer.showHostHealth` | `true` | Show load, RAM, disk, uptime, and latency |
-| `gpu-fleet-viewer.enableSlurmIntegration` | `true` | Detect Slurm and associate jobs |
-| `gpu-fleet-viewer.slurmRefreshInterval` | `30` | Cache duration for Slurm metadata |
-| `gpu-fleet-viewer.availabilityRequireNoProcesses` | `true` | Require no compute processes |
-| `gpu-fleet-viewer.availabilityMaxMemoryMiB` | `512` | Maximum used memory for availability |
-| `gpu-fleet-viewer.availabilityMaxUtilization` | `10` | Maximum utilization for availability |
-| `gpu-fleet-viewer.showStatusBar` | `true` | Show fleet availability in the status bar |
-| `gpu-fleet-viewer.enableNotifications` | `false` | Notify on newly crossed warning thresholds |
-| `gpu-fleet-viewer.researchUser` | empty | Remote username used by **My tasks** |
-| `gpu-fleet-viewer.ai.protocol` | `openai` | OpenAI-compatible Chat Completions or Anthropic Messages |
-| `gpu-fleet-viewer.ai.baseUrl` | `https://api.openai.com/v1` | Custom API base URL or full endpoint |
-| `gpu-fleet-viewer.ai.model` | empty | Model ID provided by your API service |
-| `gpu-fleet-viewer.ai.timeoutSeconds` | `120` | AI response timeout, up to 900 seconds |
-| `gpu-fleet-viewer.ai.saveChatHistory` | `false` | Save conversation text locally; turning off clears saved copies across all panels |
-| `gpu-fleet-viewer.ai.maxToolCalls` | `0` | Tool calls per turn; 0 = unlimited. A positive budget pauses with a Continue action |
-| `gpu-fleet-viewer.ai.logTailLines` | `500` | Task log tail lines per read, up to 10,000 |
-| `gpu-fleet-viewer.ai.logTailKiB` | `256` | Task log bytes per read, up to 2,048 KiB |
+## 在服务器上执行了什么
 
-Target lists, ignored hosts, SSH config path, and warning thresholds are also configurable. Settings from the earlier `gpu-server-viewer` namespace are migrated automatically on first activation.
+每一轮采集只开一个 SSH 会话，把下面这些命令合成一个 POSIX sh 脚本，通过标准输入交给 `sh -s` 执行（与登录 shell 是 bash、zsh 还是 fish 无关）：
 
-## Optional AI assistant
+| 数据 | 命令 | 默认频率 |
+|---|---|---|
+| GPU | `nvidia-smi --query-gpu=…`、`nvidia-smi --query-compute-apps=…`、`ps -o … -p <GPU 进程>` | 5 秒 |
+| Slurm（可选） | `scontrol listpids`、`squeue -h` | 30 秒 |
+| CPU | 读取 `/proc/stat`、`/proc/loadavg`，`nproc` | 5 秒 |
+| 内存 | 读取 `/proc/meminfo` | 5 秒 |
+| 磁盘 | `df -P -k -T`（固定路径另用 `df <路径>`）、`quota -v`、`lfs quota` | 60 秒 |
+| 系统信息 | `uname`、`id -un`、`/etc/os-release`、`/proc/uptime`、`/proc/cpuinfo` | 随磁盘 |
+| 目录分析 | `du -x -k -d N`（低优先级，有时间上限） | 仅手动 |
 
-1. Open dashboard **Settings → AI**, choose the protocol, enter your provider's API URL and model ID, and save.
-2. Select **Set / replace key**. VS Code prompts for the key using a password field and saves it in SecretStorage for that protocol and endpoint. It is never stored in `settings.json` or passed to the Webview.
-3. Open **AI assistant**, or select **Ask AI** in a GPU's task inspector. The dashboard remains behind a compact chat window. The sidebar lists separate conversations with new, switch, rename and delete actions, plus a collapsed reminder section. Scope is above the conversation; permissions are beside the input. Clicking a GPU opens its task inspector in a separate right sidebar, with a drawer on narrow windows; close it with its close button or Escape.
+到期时间相近的指标合并到同一次 SSH 执行；同一台服务器上一轮没结束时不会开始下一轮。每条命令在服务器上有 `timeout` 时都会被限时；一轮采集耗时很长的服务器会自动降低采集频率。
 
-The current visible fleet summary is included automatically when you send a question. The model chooses how to investigate using local SSH tools: trace workers to their launcher, inspect Slurm queue/accounting, compare resources, explore task directories and request explicitly authorized text. Discovery returns metadata from actual working directories, arguments, open files and observed subdirectories, without filename templates or reading their contents. The text tool can read a bounded beginning or tail of logs, JSON/JSONL/CSV metrics, configs or scripts; binary event formats are unsupported. Raw evidence goes to the model for interpretation, without a fixed progress parser or keyword-based question routing. Connection, waiting, response and tool stages appear in the conversation with elapsed time and expandable evidence; successful answers automatically fold the operation records. These are actual operations, not model reasoning. No SSH private keys or API keys are sent to the model. Full commands, discovered filenames and authorized text may contain private experimental data; only authorize files you permit your configured provider to receive. Common credential fields are masked, but masking is not comprehensive data anonymization.
+## 资源占用与安全
 
-For example: **“What is running on GPU 6 and 7?” → “Check the parent process and its progress” → “Notify me when this task ends.”** If a log needs authorization, an inline card shows its exact server/path, read size and receiving API. In **Confirm each read** mode, choose **Allow once and continue** or **Decline**. Switch the composer to **Full Access · read-only** to automatically read task files discovered through process, job or directory metadata. The pending operation resumes automatically. This mode still excludes arbitrary shell, writes, task termination and sensitive paths; file text goes to your configured API. Switching back cancels automatic reads still pending. Permission modes belong to each chat, and saved chats always restore with confirmation required. Old per-file grants are no longer used.
+- 连接复用：使用 OpenSSH 的 ControlMaster，每台服务器只保持一个 TCP 连接，后续采集复用它，空闲 `connectionIdleSeconds` 秒后自动断开。控制套接字放在 `/tmp/serverlens-<uid>/`，目录权限 0700，使用前检查属主和类型。停用插件或关闭 VS Code 时，ServerLens 会关闭它打开的所有共享连接。
+- 监控连接会清除 SSH config 里的端口转发（`ClearAllForwardings=yes`），并关闭 agent 和 X11 转发，不会占用你在 config 里为交互会话配置的 `RemoteForward` 端口。
+- ServerLens 从不读取或保存密码、私钥。它只调用系统的 `ssh`，认证完全交给 ssh 和 ssh-agent。日志（输出面板 “ServerLens”）只记录主机别名、耗时和错误类型；ssh 的报错在显示前会去掉私钥块和控制字符。
+- 采集失败的服务器按 10 秒、20 秒、40 秒……最长 2 分钟的间隔退避重试，手动刷新会立即重试。
+- Monitor 视图、Servers 树和仪表盘都不可见时自动暂停采集（`pauseWhenHidden`）。
 
-Tool-call count is unlimited by default. You can stop a turn at any time or set a positive budget in **Settings → AI**. A paused or failed investigation can continue from pending work without replaying completed actions. Long investigations compact older tool groups into bounded factual excerpts and retain recent evidence; missing details can be queried again. The view retains the latest 80 completed activity records with bounded detail excerpts, independently of how many tools execute. DNS, connection-reset, TLS, timeout and HTTP failures include available error codes/stages; these diagnostics distinguish failure types but do not prove which network party caused them.
+## 常见问题
 
-Completion estimates need logged progress and an observed speed; they describe the current phase and may exclude validation/checkpoint saving. Slurm time limits are shown as scheduling constraints. Utilization or runtime alone does not provide a reliable ETA. Missing permissions, container visibility, unavailable tools and unknown outcomes are reported rather than inferred as success.
+| 现象 | 原因和处理 |
+|---|---|
+| SSH 认证失败 | ServerLens 不能输入密码。配置密钥登录，并确认 ssh-agent 已加载密钥 |
+| 主机密钥未受信任 | 在终端执行一次 `ssh <host>` 并确认指纹 |
+| GPU 显示 “nvidia-smi did not respond in time” | 服务器上 `nvidia-smi` 很慢（驱动未开启持久模式，或很多程序同时查询）。下一轮会自动放宽到 45 秒；也可以请管理员开启 `nvidia-smi -pm 1` |
+| “df 超时，仅显示本地文件系统” | 某个网络挂载（NFS 等）无响应。本地盘照常显示，网络盘恢复后会自动出现 |
+| 磁盘太多 | 用 `serverlens.hiddenMounts` 隐藏不关心的挂载点，或用 `serverlens.pinnedMounts` 固定重要的路径 |
+| Windows 上没有连接复用 | Windows 自带的 OpenSSH 不支持 ControlMaster，每轮会新建连接 |
 
-GPU Fleet uses the **local desktop** SSH executable and local SSH configuration, including your port, agent and ProxyJump, even in a Remote SSH or container window. Install it under **Local** in VS Code; a remote-only installation must be moved locally. The AI service does not connect to your machines. It cannot run arbitrary shell, stop jobs, edit training parameters, install packages or delete files. Suggested commands are prepared for review, never auto-run.
+## 已知限制
 
-AI requests occur only when you send a question or follow-up. Your configured provider receives the question, conversation and relevant evidence. Automatic dashboard refresh and reminders never call AI. Keys remain endpoint-scoped in SecretStorage. Each conversation keeps its own history, draft and task scope; switching stops the active reply and retains its pending work in that chat. Chats remain in the current panel by default. Enable **Settings → AI → Save conversation text locally** to restore conversation text after closing VS Code; tool evidence, drafts, pending operations and Full Access are not saved. Turning this setting off clears saved chat copies for all panels. Changing API protocol, address or model selects a separate set of conversations. **Clear chat** deletes the current conversation; other conversations remain. Use HTTPS for remote API services; HTTP transmits data without encryption. Streaming and native tool calling depend on your provider/model; the client first retries tool-enabled requests without streaming. If the API still rejects tools, a persistent notice explains that the reply is basic chat without task inspection or reminder creation.
+- 只支持 Linux 服务器和 NVIDIA GPU（通过 `nvidia-smi`）。
+- 配额只支持 `quota`（ext4/xfs/NFS rquotad）和 Lustre 的 `lfs quota`；XFS 项目配额、BeeGFS、GPFS 的配额工具暂不支持。
+- 同一台物理机配置了多个别名时，GPU 只在汇总中计算一次，但每个别名都会被采集。
+- 目录分析只读，不提供删除或清理。
 
-### Refresh and navigation
+## 开发
 
-Language is under **Settings → Display**. The header shows the last data time and refresh mode; select the mode to open refresh settings. Availability and warning summaries can filter the GPU view. Resource requirements, user selection and search share one compact filter area, with a clear action shown only while filters are active.
+见 [DEVELOPMENT.md](DEVELOPMENT.md)。测试结果见 [docs/TEST_REPORT.md](docs/TEST_REPORT.md)，与原插件相比的改动见 [CHANGELOG.md](CHANGELOG.md)。
 
-Hosts refresh concurrently within the configured limit, shared across dashboard snapshots, assistant queries and background reminders. Matching in-flight snapshots coalesce, and automatic refresh can reuse observations less than two seconds old. A new automatic round waits until the prior round finishes; hidden panels pause by default. Failed hosts back off from 10 seconds up to two minutes, with their last known data retained and retry time displayed. Manual refresh bypasses this backoff. No automatic refresh calls AI or repeatedly reads task directories/logs.
+## 许可与致谢
 
-### Reminders
-
-Ask for GPU release, verified task end, or a scheduled check. Conditions and absolute deadlines are shown in the sidebar, where you can edit the deadline or cancel. Release reminders require two successful free samples at least 30 seconds apart; unknown/offline snapshots do not count. Unspecified deadlines default to 24 hours. A worker exit alone does not prove an entire experiment completed.
-
-Reminders persist locally and run while **desktop VS Code is running and the machine is awake**, independently of the chat or dashboard panel. They poll only relevant configured servers every 30 seconds, coalescing recent queries. They do not reserve GPUs or guarantee a notified card stays free. After restart or sleep, overdue valid scheduled checks report once; expired conditions are marked expired.
-
-## Security and privacy
-
-GPU Fleet Viewer invokes your system `ssh` client with argument-safe execution, key-only batch mode, and a configurable timeout. A custom SSH config is passed to the SSH client as well as used for host discovery. Hosts and GPU identifiers received from the Webview are validated again in the extension host. It reads your SSH config but never reads or stores private-key contents. Monitoring data stays between VS Code and your servers until you send an AI question, which includes the visible fleet context and may request relevant task evidence. There is no telemetry service, persistent metric history, or job-control endpoint.
-
-Please report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
-
-## Support
-
-See [SUPPORT.md](SUPPORT.md) for troubleshooting and support channels. Bug reports and feature requests are welcome in [GitHub Issues](https://github.com/yruichen/gpu-fleet-viewer/issues).
-
-## Development
-
-```bash
-npm ci
-npm test
-npx vsce package
-```
-
-For a standalone local preview:
-
-```bash
-npm run preview:build
-python3 -m http.server 8765 --bind 127.0.0.1
-```
-
-Then open `http://127.0.0.1:8765/preview/`.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) before submitting a change. Maintainers can find the release checklist in [docs/PUBLISHING.md](docs/PUBLISHING.md).
-
-### Project directories
-
-- `src/` — extension source and tests.
-- `resources/` — extension icons and static assets.
-- `scripts/` — local preview and verification helpers.
-- `docs/` — contributor and publishing documentation.
-- `design/` — local design-work artifacts.
-- `releases/` — ignored local `.vsix` packages for manual verification.
-- `out/`, `preview/`, and `output/` — ignored generated build and preview files.
-
-## Acknowledgements
-
-GPU Fleet Viewer is based on [GPU Server Viewer](https://github.com/Riku-0801/gpu-server-observer) by Riku-0801 and includes substantial UI, performance, reliability, configuration, and testing changes. See [NOTICE](NOTICE) for attribution.
-
-Licensed under the [Apache License 2.0](LICENSE.txt).
+ServerLens 以 Apache License 2.0 发布。它基于 [GPU Fleet Viewer](https://github.com/yruichen/gpu-fleet-viewer)（Copyright 2026 yruichen），后者基于 [GPU Server Viewer](https://github.com/Riku-0801/gpu-server-viewer)（Riku-0801），两者均为 Apache-2.0。署名和修改说明见 [NOTICE](NOTICE) 与 [LICENSE.txt](LICENSE.txt)。图标中的线条图标来自 [Lucide](https://lucide.dev/)（ISC，见 `resources/LUCIDE-LICENSE`）。

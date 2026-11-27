@@ -1,11 +1,11 @@
 name: Bug report
-description: Report a reproducible problem in GPU Fleet Viewer
+description: Report a reproducible problem in ServerLens
 title: "[Bug]: "
 labels: [bug]
 body:
   - type: markdown
     attributes:
-      value: Thanks for helping improve GPU Fleet Viewer. Remove private host, user, and process information before submitting.
+      value: Thanks for helping improve ServerLens. Remove private host, user, and process information before submitting.
   - type: input
     id: version
     attributes:
@@ -32,7 +32,7 @@ body:
     attributes:
       label: Reproduction steps
       placeholder: |
-        1. Open GPU Fleet
+        1. Open ServerLens
         2. Select ...
         3. Observe ...
     validations:

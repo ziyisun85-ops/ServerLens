@@ -1,8 +1,9 @@
+// GPU parser, SSH config and fleet model tests (from GPU Fleet Viewer).
+// Modified for ServerLens (2026): XML and SSH-execution cases moved to the new transport/collection tests.
 import * as assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import childProcess = require('child_process');
 import { GpuMonitor } from '../gpuMonitor';
 import {
     aggregateUsers,
@@ -13,26 +14,6 @@ import {
     summarizeFleet
 } from '../fleetModel';
 import { SshConfigParser } from '../sshConfig';
-
-const dummyXml = `<?xml version="1.0" ?>
-<nvidia_smi_log>
-    <gpu id="00000000:01:00.0">
-        <product_name>NVIDIA GeForce RTX 4090</product_name>
-        <uuid>GPU-test-uuid</uuid>
-        <fan_speed>34 %</fan_speed>
-        <temperature><gpu_temp>45 C</gpu_temp></temperature>
-        <fb_memory_usage>
-            <total>24564 MiB</total><used>1234 MiB</used><free>23330 MiB</free>
-        </fb_memory_usage>
-        <utilization><gpu_util>15 %</gpu_util><memory_util>5 %</memory_util></utilization>
-        <power_readings><power_draw>120.50 W</power_draw><power_limit>450.00 W</power_limit></power_readings>
-        <processes>
-            <process_info>
-                <pid>1234</pid><process_name>/usr/bin/python3</process_name><used_memory>1024 MiB</used_memory>
-            </process_info>
-        </processes>
-    </gpu>
-</nvidia_smi_log>`;
 
 async function runTest(): Promise<void> {
     const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'gpu-viewer-test-'));
@@ -69,14 +50,6 @@ async function runTest(): Promise<void> {
         ], 'Host aliases must share block options; wildcard and Match blocks must not overwrite them.');
 
         const owners = new Map([['1234', 'alice']]);
-        const gpus = await new GpuMonitor().parseNvidiaSmiXml(dummyXml, owners);
-        assert.strictEqual(gpus.length, 1);
-        assert.strictEqual(gpus[0].name, 'NVIDIA GeForce RTX 4090');
-        assert.strictEqual(gpus[0].fanSpeed, '34 %');
-        assert.strictEqual(gpus[0].power.draw, '120.50 W');
-        assert.strictEqual(gpus[0].processes[0].user, 'alice');
-        assert.strictEqual(gpus[0].processes[0].usedMemory, '1024 MiB');
-
         const queryOutput = '0, GPU-test-uuid, NVIDIA GeForce RTX 4090, 15, 5, 24564, 23330, 1234, 45, 120.50, 450.00, 34';
         const processOutput = 'GPU-test-uuid, 1234, "/usr/bin/python,worker", 1024';
         const queriedGpus = new GpuMonitor().parseNvidiaSmiQuery(queryOutput, processOutput, owners);
@@ -88,31 +61,6 @@ async function runTest(): Promise<void> {
         assert.strictEqual(queriedGpus[0].processes[0].name, '/usr/bin/python,worker');
         assert.strictEqual(queriedGpus[0].processes[0].user, 'alice');
         assert.strictEqual(queriedGpus[0].processes[0].command, '/usr/bin/python,worker');
-
-        const originalExecFile = childProcess.execFile;
-        const sshArguments: string[][] = [];
-        (childProcess as any).execFile = (file: string, args: string[], _options: unknown, callback: any) => {
-            assert.strictEqual(file, 'ssh');
-            sshArguments.push(args);
-            callback(null, queryOutput, '');
-        };
-        try {
-            const customOptions = { timeoutSeconds: 8, includeProcessOwners: false, sshConfigPath: configPath };
-            await new GpuMonitor().getServerSnapshot('alpha', customOptions);
-            const configIndex = sshArguments[0].indexOf('-F');
-            assert.ok(configIndex >= 0, 'Monitoring must use the same SSH config file as discovery.');
-            assert.strictEqual(sshArguments[0][configIndex + 1], configPath);
-        } finally {
-            childProcess.execFile = originalExecFile;
-        }
-
-        const monitor = new GpuMonitor();
-        const health = monitor.parseHostHealth('1.25|0.80|0.50|262144|196608|1048576|524288|86400');
-        assert.ok(health);
-        assert.strictEqual(health?.memoryTotalMiB, 256);
-        assert.strictEqual(health?.memoryUsedMiB, 64);
-        assert.strictEqual(health?.diskUsedMiB, 512);
-        assert.strictEqual(health?.uptimeSeconds, 86400);
 
         const availabilitySettings = {
             availabilityRequireNoProcesses: true,

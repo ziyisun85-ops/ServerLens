@@ -1,8 +1,11 @@
+// Dashboard webview script and styles (from GPU Fleet Viewer).
+// Modified for ServerLens (2026): AI assistant and task tracing removed; DOM helpers moved to
+// webviewShared.ts; server rows show CPU, RAM and the fullest disk.
 import en = require('./locales/en.json');
 import zhCN = require('./locales/zh-CN.json');
 import lineIcons = require('./lineIcons.json');
+import { sharedDomHelpers } from './webviewShared';
 import { getDialogCss, getPreferencesScript } from './preferencesView';
-import { getAssistantCss, getAssistantScript } from './assistantView';
 
 const dashboardTranslations = { en, 'zh-CN': zhCN };
 
@@ -25,7 +28,6 @@ export function getDashboardScript(): string {
         const refreshMode = document.getElementById('refresh-mode');
         const refreshButton = document.getElementById('refresh-button');
         const settingsButton = document.getElementById('settings-button');
-        const assistantButton = document.getElementById('assistant-button');
         const minMemory = document.getElementById('min-memory');
         const minGpus = document.getElementById('min-gpus');
         const myTasksButton = document.getElementById('my-tasks-button');
@@ -39,8 +41,6 @@ export function getDashboardScript(): string {
         let refreshStatus = { state: 'idle', completed: 0, total: 0 };
         let visibleGpuCount = 0;
         const selectedTasks = new Map();
-        const taskEvidence = new Map();
-        const taskProgress = new Map();
         const taskText = (en, zh) => language === 'zh-CN' ? zh : en;
 
         const translations = ${JSON.stringify(dashboardTranslations)};
@@ -86,17 +86,22 @@ export function getDashboardScript(): string {
             if (option) option.textContent = label;
         }
 
+        let labelsLanguage;
         function applyStaticLanguage() {
             document.documentElement.lang = language;
-            settingsButton.replaceChildren(icon('settings-2'), document.createTextNode(t('settings')));
-            assistantButton.replaceChildren(icon('sparkles'), document.createTextNode(t('assistant')));
-            refreshButton.replaceChildren(icon('refresh-cw'), document.createTextNode(t('refresh')));
+            // Rebuilding the buttons on every update restarted the refresh icon's rotation; only do it
+            // when the language actually changes.
+            if (labelsLanguage !== language) {
+                labelsLanguage = language;
+                settingsButton.replaceChildren(icon('settings-2'), document.createTextNode(t('settings')));
+                refreshButton.replaceChildren(icon('refresh-cw'), document.createTextNode(t('refresh')));
+                myTasksButton.replaceChildren(icon('user'), document.createTextNode(t('myTasks')));
+                resetFiltersButton.replaceChildren(icon('rotate-ccw'), document.createTextNode(t('resetFilters')));
+            }
             document.getElementById('min-memory-label').textContent = t('minFreeMemory');
             document.getElementById('min-gpus-label').textContent = t('matchingGpus');
-            myTasksButton.replaceChildren(icon('user'), document.createTextNode(t('myTasks')));
             myTasksButton.title=currentMessage?.preferences?.researchUser?taskText('Filter by your configured username','按设置中的用户名筛选'):taskText('Set your remote username in Settings','在设置中填写远程用户名');
             myTasksButton.setAttribute('aria-pressed', String(Boolean(currentMessage && currentMessage.preferences && currentMessage.preferences.researchUser && selectedUser === currentMessage.preferences.researchUser)));
-            resetFiltersButton.replaceChildren(icon('rotate-ccw'), document.createTextNode(t('resetFilters')));
             searchInput.placeholder = t('search');
             searchInput.setAttribute('aria-label', t('search'));
             setOptionLabel(statusFilter, 'all', t('allGpus'));
@@ -110,10 +115,28 @@ export function getDashboardScript(): string {
             setOptionLabel(sortSelect, 'temperature', t('lowestTemperature'));
         }
 
+        // The refresh icon turns at least once and stops at the end of a turn instead of snapping back.
+        const REFRESH_SPIN_PERIOD = 1200;
+        let refreshSpinStart = 0;
+        let refreshSpinTimer;
+        function setRefreshSpin(active) {
+            clearTimeout(refreshSpinTimer);
+            if (active) {
+                if (!refreshButton.classList.contains('refreshing')) {
+                    refreshSpinStart = performance.now();
+                    refreshButton.classList.add('refreshing');
+                }
+                return;
+            }
+            if (!refreshButton.classList.contains('refreshing')) return;
+            const elapsed = performance.now() - refreshSpinStart;
+            const wait = Math.max(1, Math.ceil(elapsed / REFRESH_SPIN_PERIOD)) * REFRESH_SPIN_PERIOD - elapsed;
+            refreshSpinTimer = setTimeout(() => refreshButton.classList.remove('refreshing'), Math.max(0, wait));
+        }
         function showRefreshState(state, completed, total) {
             refreshStatus = { state, completed, total };
             const active = state === 'refreshing' || state === 'queued';
-            refreshButton.classList.toggle('refreshing', active);
+            setRefreshSpin(active);
             refreshButton.setAttribute('aria-busy', String(active));
             if (!currentMessage && active) {
                 content.replaceChildren(node('div', 'empty-state loading-state', t('loadingServers')));
@@ -135,7 +158,6 @@ export function getDashboardScript(): string {
 
         refreshButton.addEventListener('click', () => vscode.postMessage({ command: 'refresh' }));
         settingsButton.addEventListener('click', () => window.dispatchEvent(new Event('openPreferences')));
-        assistantButton.addEventListener('click', () => window.dispatchEvent(new Event('openAssistant')));
         refreshMode.addEventListener('click',()=>window.dispatchEvent(new CustomEvent('openPreferences',{detail:'refresh'})));
         searchInput.addEventListener('input', () => renderFleet());
         statusFilter.addEventListener('change', () => renderFleet());
@@ -164,12 +186,7 @@ export function getDashboardScript(): string {
             renderFleet();
         });
 
-        function node(tag, className, text) {
-            const element = document.createElement(tag);
-            if (className) element.className = className;
-            if (text !== undefined) element.textContent = text;
-            return element;
-        }
+        ${sharedDomHelpers()}
 
         function button(label, className, handler, title) {
             const element = node('button', className, label);
@@ -182,44 +199,6 @@ export function getDashboardScript(): string {
                 handler();
             };
             return element;
-        }
-
-        // Retain mounted nodes so background updates preserve focus, selection,
-        // scroll containers, and progress transitions. Only changed values mutate.
-        function patchChildren(parent, desired) {
-            const previous = Array.from(parent.childNodes);
-            const used = new Set();
-            const keyed = new Map(previous.filter(child => child.nodeType === 1 && child.dataset.key)
-                .map(child => [child.dataset.key, child]));
-            let cursor = parent.firstChild;
-            for (const next of Array.from(desired.childNodes)) {
-                const key = next.nodeType === 1 && next.dataset.key;
-                const current = key ? keyed.get(key) : previous.find(child => !used.has(child) &&
-                    !(child.nodeType === 1 && child.dataset.key) && child.nodeType === next.nodeType && child.nodeName === next.nodeName);
-                let mounted = next;
-                if (current && current.nodeName === next.nodeName) {
-                    mounted = current;
-                    used.add(current);
-                    if (next.nodeType !== 1) {
-                        if (current.nodeValue !== next.nodeValue) current.nodeValue = next.nodeValue;
-                    } else {
-                        for (const attribute of Array.from(current.attributes)) {
-                            if (!next.hasAttribute(attribute.name)) current.removeAttribute(attribute.name);
-                        }
-                        for (const attribute of Array.from(next.attributes)) {
-                            if (current.getAttribute(attribute.name) !== attribute.value) current.setAttribute(attribute.name, attribute.value);
-                        }
-                        current.onclick = next.onclick;
-                        current.ontoggle = next.ontoggle;
-                        patchChildren(current, next);
-                    }
-                }
-                if (mounted !== cursor) parent.insertBefore(mounted, cursor);
-                cursor = mounted.nextSibling;
-            }
-            for (const child of previous) {
-                if (!used.has(child)) child.remove();
-            }
         }
 
         function number(value) {
@@ -466,9 +445,6 @@ export function getDashboardScript(): string {
             const title=node('div');title.id='gpu-details-title';title.append(node('strong','',(server.metadata?.alias||server.host)+' · GPU '+gpu.index),node('span','subtle block',gpu.name+' · '+gpu.memory.used+' / '+gpu.memory.total+' · '+gpu.utilization.gpu));
             const close=button('','secondary-button compact-button',closeInspector,t('close')+' (Esc)');close.setAttribute('aria-label',t('close'));close.append(icon('x'));
             header.append(title,close);inspector.append(header);
-            const actions=node('div','task-primary-actions');
-            const ask=(process)=>window.dispatchEvent(new CustomEvent('openAssistant',{detail:{host:server.host,uuid:gpu.uuid,pid:process?.pid,question:process?taskText('Identify this GPU task and inspect its launcher and progress.','查一下这个 GPU 任务的训练入口和进度。'):taskText('What is running on this GPU?','这张 GPU 在运行什么任务？')}}));
-            actions.append(button(taskText('Ask AI','问 AI'),'secondary-button compact-button',()=>ask(selectedTasks.get(key))),button(taskText('Notify when free','释放时提醒我'),'secondary-button compact-button',()=>{vscode.postMessage({command:'watchGpu',host:server.host,uuid:gpu.uuid});window.dispatchEvent(new CustomEvent('openAssistant',{detail:{host:server.host,uuid:gpu.uuid}}));}));inspector.append(actions);
             if(!gpu.processes.length&&!selectedTasks.has(key)){inspector.append(node('p','subtle',t('noProcesses')));return inspector;}
             const layout=node('div','task-inspector-layout');
             const list=node('div','process-scroll task-list');list.setAttribute('role','group');list.setAttribute('aria-label',taskText('GPU processes','GPU 进程'));
@@ -488,45 +464,35 @@ export function getDashboardScript(): string {
                 if(process.slurm)details.append(node('p','subtle','Slurm '+process.slurm.id+' · '+process.slurm.name+' · '+process.slurm.state));
                 details.append(node('pre','task-command',process.command||process.name));
                 const controls=node('div','dialog-actions');
-                controls.append(button(taskText('Trace task source','查询任务来源'),'secondary-button compact-button',()=>{taskEvidence.set(key+':'+process.pid,{loading:true});vscode.postMessage({command:'inspectTask',host:server.host,uuid:gpu.uuid,pid:process.pid});renderFleet();}),button(t('cmd'),'secondary-button compact-button',()=>vscode.postMessage({command:'copyAiText',text:process.command||process.name})),button('PID','secondary-button compact-button',()=>vscode.postMessage({command:'copyAiText',text:process.pid})),button(taskText('Ask AI about task','问 AI 分析任务'),'secondary-button compact-button',()=>ask(process)));
-                controls.firstElementChild.disabled=!live;inspector.append(node('span','subtle task-sample-time',taskText('GPU sample: ','GPU 采样：')+new Date(server.lastSuccessAt||server.collectedAt).toLocaleTimeString()));details.append(controls);
-                const evidence=taskEvidence.get(key+':'+process.pid);
-                if(evidence){
-                    if(evidence.loading)details.append(node('p','subtle',taskText('Tracing parent processes…','正在追查父进程…')));
-                    else if(evidence.error)details.append(node('p','task-ended',evidence.error));
-                    else {
-                        details.append(node('p','subtle',taskText('Task evidence: ','任务查询：')+new Date(evidence.collectedAt).toLocaleTimeString()));
-                        const chain=node('div','task-parent-chain');
-                        for(const parent of evidence.chain||[]) {const item=node('div','task-parent');item.append(node('strong','',parent.user+' · PID '+parent.pid+' → '+parent.ppid),node('code','block',parent.command),node('span','subtle block',parent.cwd||''));chain.append(item);}
-                        if(!chain.childNodes.length)chain.append(node('p','subtle',taskText('No accessible process evidence. The task may have exited or permission is missing.','没有可读取的进程信息：任务可能已退出或权限不足。')));
-                        details.append(chain);
-                        const paths=[...new Set((evidence.chain||[]).flatMap(p=>p.logs||[]))];
-                        for(const path of paths) {
-                            const log=node('div','task-parent');log.append(node('strong','',taskText('Task log','任务日志')),node('code','block',path));
-                            const progress=taskProgress.get(server.host+':'+path);
-                            if(progress){
-                                log.append(node('span','subtle block',taskText('Log updated: ','日志更新：')+new Date(progress.modifiedAt*1000).toLocaleString()),node('span','subtle block',taskText('Read at: ','已读取于：')+new Date(progress.collectedAt).toLocaleTimeString()+taskText(' · Interpretation in AI chat',' · 进度解读见 AI 对话')));
-                            } else log.append(node('span','subtle block',taskText('Ask AI to inspect progress; it will request log authorization if needed.','问 AI 查询进度，需要读取日志时会在对话中请求授权。')));
-                            details.append(log);
-                        }
-                    }
-                }
+                controls.append(button(t('cmd'),'secondary-button compact-button',()=>vscode.postMessage({command:'copyValue',kind:'command',host:server.host,uuid:gpu.uuid,pid:process.pid})),button('PID','secondary-button compact-button',()=>vscode.postMessage({command:'copyValue',kind:'pid',host:server.host,uuid:gpu.uuid,pid:process.pid})));
+                inspector.append(node('span','subtle task-sample-time',taskText('GPU sample: ','GPU 采样：')+new Date(server.lastSuccessAt||server.collectedAt).toLocaleTimeString()));details.append(controls);
             }
             layout.append(list,details);inspector.append(layout);return inspector;
         }
 
         function renderHealth(server) {
-            if (!server.health) return undefined;
+            const cpu = server.cpu, memory = server.memory, system = server.system;
+            const disk = server.disks && server.disks.disks && server.disks.disks.reduce((worst, item) => !worst || item.usedPercent > worst.usedPercent ? item : worst, undefined);
+            if (!cpu && !memory && !disk && !system) return undefined;
+            const settings = currentMessage.settings;
             const health = node('div', 'host-health');
-            const ramPercent = healthPercent(server.health.memoryUsedMiB, server.health.memoryTotalMiB);
-            const diskPercent = healthPercent(server.health.diskUsedMiB, server.health.diskTotalMiB);
-            [{ label: t('load'), value: server.health.load1.toFixed(2) },
-                { label: t('ram'), value: Math.round(ramPercent) + '%', level: ramPercent },
-                { label: t('disk'), value: Math.round(diskPercent) + '%', level: diskPercent },
-                { label: t('uptime'), value: formatDuration(server.health.uptimeSeconds) },
-                { label: 'SSH', value: server.latencyMs + ' ms' }].forEach(healthMetric => {
-                const warning = healthMetric.level !== undefined && healthMetric.level >= 85;
-                const item = node('span', warning ? 'health-item warning' : 'health-item');
+            const metrics = [];
+            if (cpu && cpu.usagePercent !== undefined) metrics.push({ label: 'CPU', value: Math.round(cpu.usagePercent) + '%', level: cpu.usagePercent, warn: 85,
+                title: (cpu.logicalCores ? cpu.logicalCores + ' CPUs' : '') + (cpu.load1 !== undefined ? ' · load ' + cpu.load1.toFixed(2) : '') });
+            if (cpu && cpu.load1 !== undefined) metrics.push({ label: t('load'), value: cpu.load1.toFixed(2) });
+            if (memory) metrics.push({ label: t('ram'), value: Math.round(memory.usedPercent) + '%', level: memory.usedPercent, warn: 85,
+                title: formatMemory(memory.usedKiB / 1024) + ' / ' + formatMemory(memory.totalKiB / 1024) });
+            if (disk) metrics.push({ label: t('disk') + ' ' + disk.mountPoint, value: disk.usedPercent + '%', level: disk.usedPercent,
+                warn: settings.diskWarningThreshold, critical: settings.diskCriticalThreshold,
+                title: formatMemory(disk.usedKiB / 1024) + ' / ' + formatMemory(disk.totalKiB / 1024) });
+            if (system && system.uptimeSeconds) metrics.push({ label: t('uptime'), value: formatDuration(system.uptimeSeconds) });
+            metrics.push({ label: 'SSH', value: server.latencyMs + ' ms' });
+            metrics.forEach(healthMetric => {
+                const level = healthMetric.level === undefined ? 'ok'
+                    : healthMetric.critical !== undefined && healthMetric.level >= healthMetric.critical ? 'critical'
+                    : healthMetric.level >= healthMetric.warn ? 'warning' : 'ok';
+                const item = node('span', 'health-item' + (level === 'ok' ? '' : ' warning') + (level === 'critical' ? ' critical' : ''));
+                if (healthMetric.title) item.title = healthMetric.title;
                 const heading = node('span', 'health-heading');
                 heading.append(node('small', '', healthMetric.label), node('strong', '', healthMetric.value));
                 item.append(heading);
@@ -581,7 +547,8 @@ export function getDashboardScript(): string {
                 gpus.forEach(gpu => grid.append(renderGpu(server, gpu, settings)));
                 band.append(grid);
             } else if (!server.error) {
-                band.append(node('div', 'empty-state compact-empty', server.hiddenGpuCount ? taskText('All GPUs are hidden in Settings → Servers.','GPU 已全部隐藏，可在设置 → 服务器中调整。') : t('noNvidia')));
+                band.append(node('div', 'empty-state compact-empty', server.hiddenGpuCount ? taskText('All GPUs are hidden in Settings → Servers.','GPU 已全部隐藏，可在设置 → 服务器中调整。')
+                    : server.gpuState === 'error' ? taskText('nvidia-smi failed: ','nvidia-smi 执行失败：') + (server.gpuError || '') : t('noNvidia')));
             }
             return band;
         }
@@ -679,11 +646,6 @@ export function getDashboardScript(): string {
                 language = message.language === 'zh-CN' ? 'zh-CN' : 'en';
                 applyStaticLanguage();
                 showRefreshState(message.state || 'refreshing', message.completed || 0, message.total || 0);
-            } else if (message.type === 'taskProgress') {
-                taskProgress.set(message.host+':'+message.path,message);renderFleet();
-            } else if (message.type === 'taskEvidence') {
-                taskEvidence.set(message.host+':'+message.uuid+':'+message.pid,message.evidence||{error:message.error});
-                renderFleet();
             } else if (message.type === 'update') {
                 render(message);
             }
@@ -691,7 +653,6 @@ export function getDashboardScript(): string {
         applyStaticLanguage();
         refreshState.textContent = t('waiting');
         ${getPreferencesScript()}
-        ${getAssistantScript()}
         vscode.postMessage({ command: 'ready' });
     `;
 }
@@ -802,6 +763,8 @@ export function getDashboardCss(): string {
         .health-item small { color: var(--vscode-descriptionForeground); font-size: 10px; }
         .health-item strong { font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; }
         .health-item.warning strong { color: var(--vscode-editorWarning-foreground); }
+        .health-item.critical { --meter-color: var(--vscode-errorForeground); }
+        .health-item.critical strong { color: var(--vscode-errorForeground); }
         .health-meter { width: 58px; height: 2px; }
         .server-error { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 11px; color: var(--vscode-descriptionForeground); background: color-mix(in srgb, var(--vscode-foreground) 4%, transparent); font-size: 10px; }
         .error-retry { min-height: 22px; padding: 2px 7px; color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
@@ -886,6 +849,5 @@ export function getDashboardCss(): string {
         }
         @media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }
         ${getDialogCss()}
-        ${getAssistantCss()}
     `;
 }

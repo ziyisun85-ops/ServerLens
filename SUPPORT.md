@@ -2,22 +2,22 @@
 
 ## Before opening an issue
 
-Verify that the same SSH target works outside VS Code:
+Verify that the same SSH target works outside VS Code without a password prompt:
 
 ```bash
-ssh -o BatchMode=yes gpu-node-01 nvidia-smi
+ssh -o BatchMode=yes gpu-node-01 'nvidia-smi -L; df -P -k -T'
 ```
 
-GPU Fleet Viewer requires non-interactive SSH authentication and a working `nvidia-smi` command on the remote host. Increase `gpu-fleet-viewer.sshTimeout` when a server is reachable but slow to respond.
+ServerLens requires non-interactive SSH authentication. GPU data also needs `nvidia-smi` on the server; servers without it are shown as CPU-only. Increase `serverlens.sshTimeout` when a server is reachable but slow to respond. The **ServerLens: Show Log** command opens the extension log (host aliases, timings and error kinds only).
 
 ## Bugs and feature requests
 
-Use [GitHub Issues](https://github.com/yruichen/gpu-fleet-viewer/issues) and choose the appropriate template. Remove real hostnames, IP addresses, usernames, credentials, and sensitive process information before posting logs or screenshots.
+Use [GitHub Issues](https://github.com/ziyisun85-ops/ServerLens/issues). Remove real hostnames, IP addresses, usernames, credentials, mount paths and process information before posting logs or screenshots.
 
 ## Security reports
 
-Do not report vulnerabilities in a public issue. Follow [SECURITY.md](SECURITY.md) and use GitHub's private vulnerability reporting form.
+Do not report vulnerabilities in a public issue. Follow [SECURITY.md](SECURITY.md).
 
-## Marketplace
+## Installation
 
-Install the current stable release from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=yruichen.gpu-fleet-viewer). Offline VSIX packages are also available from [GitHub Releases](https://github.com/yruichen/gpu-fleet-viewer/releases).
+Install ServerLens from the Visual Studio Marketplace (search for "ServerLens" in the Extensions view, or run `code --install-extension ziyisun85-ops.serverlens`). Each release on [GitHub Releases](https://github.com/ziyisun85-ops/ServerLens/releases) also has the `.vsix` package for offline installation.
