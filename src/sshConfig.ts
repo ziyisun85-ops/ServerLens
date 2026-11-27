@@ -11,11 +11,13 @@ export function resolveSshConfigPath(configPath: string): string {
     return /^~(?=$|[\\/])/.test(configPath) ? path.join(os.homedir(), configPath.slice(1)) : configPath;
 }
 
-export function sshConfigArguments(configPath?: string): string[] {
-    if (!configPath) {
-        return [];
-    }
-    const resolved = resolveSshConfigPath(configPath);
+/** The setting as one value for every reader: trimmed, and the default when empty or not a string. */
+export function normalizeSshConfigPath(value: unknown): string {
+    return typeof value === 'string' && value.trim() ? value.trim() : '~/.ssh/config';
+}
+
+export function sshConfigArguments(configPath?: unknown): string[] {
+    const resolved = resolveSshConfigPath(normalizeSshConfigPath(configPath));
     return path.resolve(resolved) === path.join(os.homedir(), '.ssh', 'config') ? [] : ['-F', resolved];
 }
 
@@ -29,8 +31,8 @@ export interface SshHost {
 export class SshConfigParser {
     constructor() {}
 
-    public parse(configPath: string): SshHost[] {
-        const resolvedPath = this.resolveHome(configPath);
+    public parse(configPath: unknown): SshHost[] {
+        const resolvedPath = this.resolveHome(normalizeSshConfigPath(configPath));
         if (!fs.existsSync(resolvedPath)) {
             return [];
         }

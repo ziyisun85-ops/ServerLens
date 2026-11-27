@@ -340,8 +340,9 @@
 				"serverlens.sshConfigPath": {
 					"type": "string",
 					"default": "~/.ssh/config",
-					"description": "Path to the SSH config file. Machine-scoped: workspace settings cannot change it.",
-					"scope": "machine"
+					"description": "Path to the SSH config file on this computer. Only your user settings apply (also in Remote-SSH, WSL and container windows); workspace and remote settings are ignored. Not synced by Settings Sync.",
+					"scope": "application",
+					"ignoreSync": true
 				},
 				"serverlens.targets": {
 					"type": "array",

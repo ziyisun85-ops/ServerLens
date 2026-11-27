@@ -74,7 +74,7 @@ ServerLens 是面向 AI 科研人员的 VS Code 多服务器资源监控插件�
 | D22 | 截图用 Chrome 无头模式渲染真实的 webview 代码和 VS Code 默认主题变量 | 开发期间没有在本机启动 VS Code 窗口 |
 | D23 | 推送到 GitHub 时合并仓库自带的初始提交（只有一行 README），快进推送，不强制推送；首次推送前把文档中的实验室主机名和本机细节换成中性描述（只改文档） | 公开仓库不应暴露内部基础设施命名 |
 | D24 | 发布前用工作流做一次审查：两路调研（市场规则、名称可用性）、三个审查视角（清单与市场页面、真实 VS Code 运行、安全与隐私），每个视角的发现再由独立的复核者尝试推翻。确认 15 项，其中 1 项经核实不成立（上游链接实际可用），其余 14 项已修复 | 首次公开发布，且此前未在真实 VS Code 中运行过 |
-| D25 | 发布方式：Trusted Publishing（OIDC，`vsce publish --oidc`），由 `release.yml` 在手动勾选或仓库变量 `MARKETPLACE_PUBLISH=true` 时执行；首个版本可在网页上传 VSIX。不使用 PAT | 全局 PAT 将停用（2027-01-27，部分文档写 2026-12-01），微软推荐 Trusted Publishing；仓库中不保存任何令牌 |
+| D25 | 发布方式：Trusted Publishing（OIDC，`vsce publish --oidc`）。推送 `v<版本>` 标签即发布（用户要求“打 tag 即发布”）；发布者未设置时发布任务失败并给出提示，设置后重跑即可；首个版本也可在网页上传 VSIX。不使用 PAT。工作流分为 build（只读）、github-release（可写）、publish（只能换取发布凭据）三个任务，安装和测试依赖时不持有任何写权限 | 全局 PAT 将停用（2027-01-27，部分文档写 2026-12-01），微软推荐 Trusted Publishing；仓库中不保存任何令牌 |
 | D26 | `@vscode/vsce` 升级到 4.1.x | `--oidc` 需要 4.1.0 或更高版本 |
 | D27 | `engines.vscode` 提高到 `^1.82.0`，`@types/vscode` 固定为 `~1.82.0` | webview 使用 CSS `color-mix()`，VS Code 1.80/1.81 的 Chromium 108 不支持；固定类型版本后，编译器会拒绝 1.82 之后才有的 API |
 | D28 | `activationEvents` 设为 `onStartupFinished`，激活后立即按设置启动调度 | 状态栏和 `pauseWhenHidden=false` 时的后台采集在启动后即可用；默认仍只在视图可见时采集 |
@@ -167,7 +167,7 @@ main </dev/null
 ## 6. 发布流程
 
 - `.github/workflows/ci.yml`：推送和 PR 时运行 lint、单元测试、jsdom 测试、`vsce package`，以及在真实 VS Code 1.82.0 和 stable 中的扩展测试。
-- `.github/workflows/release.yml`：推送 `v<版本>` 标签时运行全部测试并打包，把 VSIX 附到 GitHub Release；手动运行并勾选 “Publish” 或设置仓库变量 `MARKETPLACE_PUBLISH=true` 时，用 Trusted Publishing 发布到市场。
+- `.github/workflows/release.yml`：推送 `v<版本>` 标签时运行全部测试并打包，把 VSIX 附到 GitHub Release，再用 Trusted Publishing 发布到市场；也可以从 Actions 页面对某个标签手动运行。
 - 一次性设置和逐步说明见 [docs/PUBLISHING.md](docs/PUBLISHING.md)。
 
 ## 7. 开发环境与命令

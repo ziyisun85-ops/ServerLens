@@ -66,10 +66,18 @@ jobs:
           command -v xvfb-run >/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q xvfb; }
           xvfb-run -a npm run test:vscode 2>&1 | tee vscode-test.log
 
-      - name: Report failed checks as annotations
-        if: failure()
+      - name: Summarize the checks as annotations
+        if: always()
         shell: bash
         run: |
-          grep -E '✗|Error|rror:' vscode-test.log | head -20 | sed 's/%/%25/g' | while IFS= read -r line; do
-            echo "::error title=VS Code ${{ matrix.vscode }}::${line}"
-          done
+          # Annotations are public, unlike job logs, so they record what actually ran.
+          [ -f vscode-test.log ] || exit 0
+          version=$(grep -a -m1 'ServerLens extension tests in VS Code' vscode-test.log | sed 's/.*VS Code //' || true)
+          passed=$(grep -a -c '✓' vscode-test.log || true)
+          failed=$(grep -a -c '✗' vscode-test.log || true)
+          echo "::notice title=VS Code ${{ matrix.vscode }}::${passed} checks passed, ${failed} failed (VS Code ${version:-unknown})"
+          if [ "$failed" != "0" ] || [ "${{ job.status }}" = "failure" ]; then
+            { grep -a -E '✗|Error|rror:' vscode-test.log || true; } | head -20 | sed 's/%/%25/g' | while IFS= read -r line; do
+              echo "::error title=VS Code ${{ matrix.vscode }}::${line}"
+            done
+          fi

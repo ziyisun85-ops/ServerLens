@@ -9,7 +9,8 @@ import { formatBytePair, formatBytes, formatDurationSeconds, percentCeil, usageL
 import { shellPath, shellQuote, splitScriptOutput, validateRemotePath, buildStopScanScript } from '../remoteScript';
 import { GpuMonitor } from '../gpuMonitor';
 import { plainText } from '../log';
-import { resolveSshConfigPath, sshConfigArguments } from '../sshConfig';
+import { normalizeSshConfigPath, resolveSshConfigPath, SshConfigParser, sshConfigArguments } from '../sshConfig';
+import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
@@ -277,6 +278,22 @@ function testSafeText(): void {
     assert.deepStrictEqual(sshConfigArguments(path.join(home, '.ssh', 'config')), []);
     assert.deepStrictEqual(sshConfigArguments('~/.ssh/lab'), ['-F', path.join(home, '.ssh', 'lab')], 'ssh -F gets an expanded path.');
     assert.deepStrictEqual(sshConfigArguments(undefined), []);
+    // Every reader of the setting sees the same value: trimmed, default when empty or not a string.
+    assert.strictEqual(normalizeSshConfigPath('  ~/.ssh/lab  '), '~/.ssh/lab');
+    assert.strictEqual(normalizeSshConfigPath(42), '~/.ssh/config');
+    assert.strictEqual(normalizeSshConfigPath('   '), '~/.ssh/config');
+    assert.deepStrictEqual(sshConfigArguments(' ~/.ssh/lab '), ['-F', path.join(home, '.ssh', 'lab')]);
+    assert.deepStrictEqual(sshConfigArguments(['not', 'a', 'path']), []);
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'serverlens-sshcfg-'));
+    try {
+        const file = path.join(directory, 'lab_config');
+        fs.writeFileSync(file, 'Host lab-a lab-b\n  HostName 10.0.0.1\n');
+        assert.deepStrictEqual(new SshConfigParser().parse(`  ${file}  `).map(host => host.host), ['lab-a', 'lab-b'],
+            'The parser trims the path exactly like ssh -F does.');
+        assert.deepStrictEqual(sshConfigArguments(`  ${file}  `), ['-F', file]);
+    } finally {
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
 }
 
 testCpu();

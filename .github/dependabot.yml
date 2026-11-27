@@ -7,6 +7,10 @@ updates:
     groups:
       npm-development-dependencies:
         dependency-type: development
+    ignore:
+      # @types/vscode must not be newer than engines.vscode, or vsce refuses to package.
+      # Raise both together by hand when the minimum VS Code version changes.
+      - dependency-name: "@types/vscode"
 
   - package-ecosystem: github-actions
     directory: /

@@ -48,8 +48,7 @@ export class GpuServerProvider implements vscode.TreeDataProvider<vscode.TreeIte
 
     public static getHosts(): SshHost[] {
         const config = vscode.workspace.getConfiguration('serverlens');
-        const configured = config.get<unknown>('sshConfigPath');
-        const configPath = typeof configured === 'string' && configured.trim() ? configured.trim() : '~/.ssh/config';
+        const configPath = config.get<unknown>('sshConfigPath');
         // Hand-edited settings may hold a string or other non-array value; ignore anything that is not a host list.
         const list = (key: string) => {
             const value = config.get<unknown>(key);

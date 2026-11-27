@@ -9,7 +9,9 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import type { ServerLensTestApi as TestApi } from '../../../extension';
 
-const EXTENSION_ID = 'ziyisun85-ops.serverlens';
+// out/test/vscode/suite is four levels below the repository root.
+const manifest = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', '..', '..', '..', 'package.json'), 'utf8')) as { publisher: string; name: string };
+const EXTENSION_ID = `${manifest.publisher}.${manifest.name}`;
 const HOST = 'serverlens-ci';
 
 async function waitFor<T>(what: string, check: () => T | undefined | false | null, timeoutMs = 30000): Promise<T> {
@@ -48,6 +50,10 @@ export async function run(): Promise<void> {
     assert.ok(extension, `${EXTENSION_ID} is installed in the test instance`);
     let api: TestApi | undefined;
 
+    await step('activates on its own after startup (onStartupFinished)', async () => {
+        await waitFor('startup activation', () => extension.isActive);
+    });
+
     await step('activates without errors', async () => {
         api = await extension.activate() as TestApi | undefined;
         assert.ok(extension.isActive);
@@ -72,9 +78,9 @@ export async function run(): Promise<void> {
 
     await step('picks up hosts from the configured SSH config', async () => {
         await update('autoRefresh', false);
-        await update('sshConfigPath', sshConfig);
-        await update('targets', [HOST]);
-        await waitFor('the host list to update', () => testApi.hosts().join(',') === HOST);
+        // With no targets set, the host list can only come from parsing this file.
+        await update('sshConfigPath', `  ${sshConfig}  `);
+        await waitFor('the host list from the parsed SSH config', () => testApi.hosts().join(',') === HOST);
     });
 
     await step('reports an unreachable server as an error instead of failing', async () => {

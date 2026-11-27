@@ -283,7 +283,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Server
         vscode.commands.registerCommand('serverlens.openDashboard', () => openDashboard()),
         vscode.commands.registerCommand('serverlens.findAvailableGpu', () => showAvailableGpuQuickPick(context, activeMonitor)),
         vscode.commands.registerCommand('serverlens.openSettings', () => {
-            void vscode.commands.executeCommand('workbench.action.openSettings', '@ext:ziyisun85-ops.serverlens');
+            void vscode.commands.executeCommand('workbench.action.openSettings', `@ext:${context.extension.id}`);
         }),
         vscode.commands.registerCommand('serverlens.connectSsh', (item: unknown) => {
             const host = hostFrom(item);
@@ -293,7 +293,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Server
         }),
         vscode.commands.registerCommand('serverlens.configureServers', async () => {
             const config = configuration();
-            const configPath = config.get<string>('sshConfigPath') || '~/.ssh/config';
+            const configPath = config.get<unknown>('sshConfigPath');
             const targets = config.get<string[]>('targets') || [];
             const additionalHosts = config.get<string[]>('additionalHosts') || [];
             const ignored = config.get<string[]>('ignoredHosts') || [];

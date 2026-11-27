@@ -98,7 +98,7 @@ ServerLens 与 GPU Server Viewer、GPU Fleet Viewer 使用不同的扩展 ID 和
 
 | 设置 | 默认值 | 说明 |
 |---|---|---|
-| `serverlens.sshConfigPath` | `~/.ssh/config` | SSH 配置文件；只能在用户设置中修改，工作区设置无效 |
+| `serverlens.sshConfigPath` | `~/.ssh/config` | 本机的 SSH 配置文件。只读取本机用户设置（Remote-SSH、WSL、容器窗口中也是），工作区和远程设置无效，不随设置同步 |
 | `serverlens.targets` / `ignoredHosts` / `additionalHosts` | 空 | 监控哪些服务器（见上一节） |
 | `serverlens.refreshInterval` | `5` | GPU 刷新间隔（秒） |
 | `serverlens.cpuRefreshInterval` | `5` | CPU 刷新间隔（秒） |
