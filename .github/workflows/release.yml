@@ -87,7 +87,7 @@ jobs:
           echo "vsix=serverlens-$version.vsix" >> "$GITHUB_OUTPUT"
 
       - name: Upload the package
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: vsix
           path: ${{ steps.package.outputs.vsix }}
