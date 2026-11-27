@@ -43,6 +43,7 @@ export function getPreferencesScript(): string {
                         : field.type === 'boolean' ? input.checked
                         : field.type === 'number' ? Number(input.value)
                         : field.type === 'hosts' ? input.value.split(/[\\n,]+/).map(value => value.trim()).filter(Boolean)
+                        : field.type === 'list' ? input.value.split(/\\n+/).map(value => value.trim()).filter(Boolean)
                         : input.value.trim();
                 }
                 return result;
@@ -62,7 +63,7 @@ export function getPreferencesScript(): string {
                 status.textContent = '';
                 document.getElementById('preferences-discard').hidden = true;
                 document.getElementById('preferences-reset').textContent = tr('Reset this section', '重置当前页');
-                for (const group of ['servers', 'refresh', 'display', 'availability', 'notifications']) {
+                for (const group of ['servers', 'refresh', 'storage', 'display', 'availability', 'notifications']) {
                     const tab = button(t('preferences_' + group), 'secondary-button', () => activate(group));
                     tab.dataset.group = group;
                     tabs.append(tab);
@@ -74,7 +75,7 @@ export function getPreferencesScript(): string {
                         const id = 'pref-' + field.key;
                         label.htmlFor = id;
                         const title = node('span', '', field.label[language === 'zh-CN' ? 1 : 0]);
-                        const input = document.createElement(['gpus','events'].includes(field.type) ? 'div' : field.type === 'hosts' ? 'textarea' : field.type === 'enum' ? 'select' : 'input');
+                        const input = document.createElement(['gpus','events'].includes(field.type) ? 'div' : field.type === 'hosts' || field.type === 'list' ? 'textarea' : field.type === 'enum' ? 'select' : 'input');
                         input.id = id;
                         input.name = field.key;
                         const value = latest[field.key] === undefined ? field.default : latest[field.key];
@@ -116,7 +117,7 @@ export function getPreferencesScript(): string {
                             }
                         } else if (field.type === 'enum') {
                             for (const option of field.options) {
-                                const entry = node('option', '', option === 'auto' ? t('followEditor') : option==='en'?'English':option==='zh-CN'?'简体中文':option);
+                                const entry = node('option', '', field.optionLabels && field.optionLabels[option] ? field.optionLabels[option][language === 'zh-CN' ? 1 : 0] : option === 'auto' ? t('followEditor') : option==='en'?'English':option==='zh-CN'?'简体中文':option);
                                 entry.value = option;
                                 input.append(entry);
                             }
@@ -125,8 +126,9 @@ export function getPreferencesScript(): string {
                             input.checked = value;
                         } else if (field.type === 'number') {
                             input.type = 'number'; input.min = field.min; input.max = field.max; input.step = 'any'; input.required = true;
-                        } else if (field.type === 'hosts') {
+                        } else if (field.type === 'hosts' || field.type === 'list') {
                             input.rows = 3;
+                            input.spellcheck = false;
                         } else {
                             input.type = 'text'; input.maxLength = 2048; input.spellcheck = false;
                         }
@@ -173,7 +175,8 @@ export function getPreferencesScript(): string {
             };
             function dependencies(){
                 const enabled=key=>document.getElementById('pref-'+key).checked;
-                for(const key of ['refreshInterval','pauseWhenHidden'])document.getElementById('pref-'+key).disabled=!enabled('autoRefresh');
+                for(const key of ['refreshInterval','cpuRefreshInterval','memoryRefreshInterval','diskRefreshInterval','pauseWhenHidden'])document.getElementById('pref-'+key).disabled=!enabled('autoRefresh');
+                document.getElementById('pref-connectionIdleSeconds').disabled=!enabled('connectionReuse');
                 document.getElementById('pref-slurmRefreshInterval').disabled=!enabled('enableSlurmIntegration');
                 for(const item of document.getElementById('pref-notificationEvents').querySelectorAll('input'))item.disabled=!enabled('enableNotifications');
                 document.getElementById('pref-notificationCooldownSeconds').disabled=!enabled('enableNotifications');

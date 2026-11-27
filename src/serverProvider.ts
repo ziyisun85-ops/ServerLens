@@ -1,11 +1,19 @@
+// Servers tree view: Dashboard entry plus one item per SSH host.
+// Modified for ServerLens (2026): items show live status (online, free GPUs, fullest disk).
 import * as vscode from 'vscode';
 import { SshConfigParser, SshHost } from './sshConfig';
+
+export interface ServerDescription {
+    state: 'online' | 'stale' | 'offline' | 'pending';
+    description: string;
+    tooltip: string;
+}
 
 export class GpuServerProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
     private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined | null | void> = new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
     readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
 
-    constructor() {}
+    constructor(private readonly describe?: (host: string) => ServerDescription | undefined) {}
 
     refresh(): void {
         this._onDidChangeTreeData.fire();
@@ -33,7 +41,7 @@ export class GpuServerProvider implements vscode.TreeDataProvider<vscode.TreeIte
         items.push(dashboardItem);
 
         const displayHosts = GpuServerProvider.getHosts();
-        const serverItems = displayHosts.map(h => new ServerTreeItem(h.host, vscode.TreeItemCollapsibleState.None));
+        const serverItems = displayHosts.map(h => new ServerTreeItem(h.host, vscode.TreeItemCollapsibleState.None, this.describe?.(h.host)));
 
         return Promise.resolve([...items, ...serverItems]);
     }
@@ -67,14 +75,22 @@ export class GpuServerProvider implements vscode.TreeDataProvider<vscode.TreeIte
     }
 }
 
+const STATE_COLORS: Record<ServerDescription['state'], string | undefined> = {
+    online: 'testing.iconPassed',
+    stale: 'editorWarning.foreground',
+    offline: 'errorForeground',
+    pending: undefined
+};
+
 export class ServerTreeItem extends vscode.TreeItem {
     constructor(
         public readonly host: string,
-        public readonly collapsibleState: vscode.TreeItemCollapsibleState
+        public readonly collapsibleState: vscode.TreeItemCollapsibleState,
+        status?: ServerDescription
     ) {
         super(host, collapsibleState);
-        this.tooltip = `SSH Host: ${host}`;
-        this.description = ''; // Could show status here later
+        this.tooltip = status?.tooltip || `SSH Host: ${host}`;
+        this.description = status?.description || '';
         this.contextValue = 'server';
 
         this.command = {
@@ -83,6 +99,7 @@ export class ServerTreeItem extends vscode.TreeItem {
             arguments: [this.host]
         };
 
-        this.iconPath = new vscode.ThemeIcon('server');
+        const color = status ? STATE_COLORS[status.state] : undefined;
+        this.iconPath = new vscode.ThemeIcon('server', color ? new vscode.ThemeColor(color) : undefined);
     }
 }

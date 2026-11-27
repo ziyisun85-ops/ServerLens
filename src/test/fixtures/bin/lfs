@@ -1,0 +1,4 @@
+#!/bin/sh
+echo "Disk quotas for usr alice (uid 1001):"
+echo "     Filesystem  kbytes   quota   limit   grace   files   quota   limit   grace"
+echo "    /mnt/lustre  123456       0 1000000       -     123       0       0       -"

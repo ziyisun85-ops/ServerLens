@@ -1,6 +1,7 @@
 import en = require('./locales/en.json');
 import zhCN = require('./locales/zh-CN.json');
 import lineIcons = require('./lineIcons.json');
+import { sharedDomHelpers } from './webviewShared';
 import { getDialogCss, getPreferencesScript } from './preferencesView';
 
 const dashboardTranslations = { en, 'zh-CN': zhCN };
@@ -158,12 +159,7 @@ export function getDashboardScript(): string {
             renderFleet();
         });
 
-        function node(tag, className, text) {
-            const element = document.createElement(tag);
-            if (className) element.className = className;
-            if (text !== undefined) element.textContent = text;
-            return element;
-        }
+        ${sharedDomHelpers()}
 
         function button(label, className, handler, title) {
             const element = node('button', className, label);
@@ -176,44 +172,6 @@ export function getDashboardScript(): string {
                 handler();
             };
             return element;
-        }
-
-        // Retain mounted nodes so background updates preserve focus, selection,
-        // scroll containers, and progress transitions. Only changed values mutate.
-        function patchChildren(parent, desired) {
-            const previous = Array.from(parent.childNodes);
-            const used = new Set();
-            const keyed = new Map(previous.filter(child => child.nodeType === 1 && child.dataset.key)
-                .map(child => [child.dataset.key, child]));
-            let cursor = parent.firstChild;
-            for (const next of Array.from(desired.childNodes)) {
-                const key = next.nodeType === 1 && next.dataset.key;
-                const current = key ? keyed.get(key) : previous.find(child => !used.has(child) &&
-                    !(child.nodeType === 1 && child.dataset.key) && child.nodeType === next.nodeType && child.nodeName === next.nodeName);
-                let mounted = next;
-                if (current && current.nodeName === next.nodeName) {
-                    mounted = current;
-                    used.add(current);
-                    if (next.nodeType !== 1) {
-                        if (current.nodeValue !== next.nodeValue) current.nodeValue = next.nodeValue;
-                    } else {
-                        for (const attribute of Array.from(current.attributes)) {
-                            if (!next.hasAttribute(attribute.name)) current.removeAttribute(attribute.name);
-                        }
-                        for (const attribute of Array.from(next.attributes)) {
-                            if (current.getAttribute(attribute.name) !== attribute.value) current.setAttribute(attribute.name, attribute.value);
-                        }
-                        current.onclick = next.onclick;
-                        current.ontoggle = next.ontoggle;
-                        patchChildren(current, next);
-                    }
-                }
-                if (mounted !== cursor) parent.insertBefore(mounted, cursor);
-                cursor = mounted.nextSibling;
-            }
-            for (const child of previous) {
-                if (!used.has(child)) child.remove();
-            }
         }
 
         function number(value) {
@@ -486,17 +444,28 @@ export function getDashboardScript(): string {
         }
 
         function renderHealth(server) {
-            if (!server.health) return undefined;
+            const cpu = server.cpu, memory = server.memory, system = server.system;
+            const disk = server.disks && server.disks.disks && server.disks.disks.reduce((worst, item) => !worst || item.usedPercent > worst.usedPercent ? item : worst, undefined);
+            if (!cpu && !memory && !disk && !system) return undefined;
+            const settings = currentMessage.settings;
             const health = node('div', 'host-health');
-            const ramPercent = healthPercent(server.health.memoryUsedMiB, server.health.memoryTotalMiB);
-            const diskPercent = healthPercent(server.health.diskUsedMiB, server.health.diskTotalMiB);
-            [{ label: t('load'), value: server.health.load1.toFixed(2) },
-                { label: t('ram'), value: Math.round(ramPercent) + '%', level: ramPercent },
-                { label: t('disk'), value: Math.round(diskPercent) + '%', level: diskPercent },
-                { label: t('uptime'), value: formatDuration(server.health.uptimeSeconds) },
-                { label: 'SSH', value: server.latencyMs + ' ms' }].forEach(healthMetric => {
-                const warning = healthMetric.level !== undefined && healthMetric.level >= 85;
-                const item = node('span', warning ? 'health-item warning' : 'health-item');
+            const metrics = [];
+            if (cpu && cpu.usagePercent !== undefined) metrics.push({ label: 'CPU', value: Math.round(cpu.usagePercent) + '%', level: cpu.usagePercent, warn: 85,
+                title: (cpu.logicalCores ? cpu.logicalCores + ' CPUs' : '') + (cpu.load1 !== undefined ? ' · load ' + cpu.load1.toFixed(2) : '') });
+            if (cpu && cpu.load1 !== undefined) metrics.push({ label: t('load'), value: cpu.load1.toFixed(2) });
+            if (memory) metrics.push({ label: t('ram'), value: Math.round(memory.usedPercent) + '%', level: memory.usedPercent, warn: 85,
+                title: formatMemory(memory.usedKiB / 1024) + ' / ' + formatMemory(memory.totalKiB / 1024) });
+            if (disk) metrics.push({ label: t('disk') + ' ' + disk.mountPoint, value: disk.usedPercent + '%', level: disk.usedPercent,
+                warn: settings.diskWarningThreshold, critical: settings.diskCriticalThreshold,
+                title: formatMemory(disk.usedKiB / 1024) + ' / ' + formatMemory(disk.totalKiB / 1024) });
+            if (system && system.uptimeSeconds) metrics.push({ label: t('uptime'), value: formatDuration(system.uptimeSeconds) });
+            metrics.push({ label: 'SSH', value: server.latencyMs + ' ms' });
+            metrics.forEach(healthMetric => {
+                const level = healthMetric.level === undefined ? 'ok'
+                    : healthMetric.critical !== undefined && healthMetric.level >= healthMetric.critical ? 'critical'
+                    : healthMetric.level >= healthMetric.warn ? 'warning' : 'ok';
+                const item = node('span', 'health-item' + (level === 'ok' ? '' : ' warning') + (level === 'critical' ? ' critical' : ''));
+                if (healthMetric.title) item.title = healthMetric.title;
                 const heading = node('span', 'health-heading');
                 heading.append(node('small', '', healthMetric.label), node('strong', '', healthMetric.value));
                 item.append(heading);
@@ -551,7 +520,8 @@ export function getDashboardScript(): string {
                 gpus.forEach(gpu => grid.append(renderGpu(server, gpu, settings)));
                 band.append(grid);
             } else if (!server.error) {
-                band.append(node('div', 'empty-state compact-empty', server.hiddenGpuCount ? taskText('All GPUs are hidden in Settings → Servers.','GPU 已全部隐藏，可在设置 → 服务器中调整。') : t('noNvidia')));
+                band.append(node('div', 'empty-state compact-empty', server.hiddenGpuCount ? taskText('All GPUs are hidden in Settings → Servers.','GPU 已全部隐藏，可在设置 → 服务器中调整。')
+                    : server.gpuState === 'error' ? taskText('nvidia-smi failed: ','nvidia-smi 执行失败：') + (server.gpuError || '') : t('noNvidia')));
             }
             return band;
         }
@@ -766,6 +736,8 @@ export function getDashboardCss(): string {
         .health-item small { color: var(--vscode-descriptionForeground); font-size: 10px; }
         .health-item strong { font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; }
         .health-item.warning strong { color: var(--vscode-editorWarning-foreground); }
+        .health-item.critical { --meter-color: var(--vscode-errorForeground); }
+        .health-item.critical strong { color: var(--vscode-errorForeground); }
         .health-meter { width: 58px; height: 2px; }
         .server-error { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 11px; color: var(--vscode-descriptionForeground); background: color-mix(in srgb, var(--vscode-foreground) 4%, transparent); font-size: 10px; }
         .error-retry { min-height: 22px; padding: 2px 7px; color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }

@@ -1,0 +1,7 @@
+#!/bin/sh
+# Fake GNU timeout: "timeout SECONDS COMMAND...". In df-hang mode a non-local df "times out".
+shift
+if [ "$FAKE_MODE" = df-hang ] && [ "$1" = df ]; then
+  case " $* " in *" -l "*) ;; *" -T "*) exit 124;; esac
+fi
+exec "$@"

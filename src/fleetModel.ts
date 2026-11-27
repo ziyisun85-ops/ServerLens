@@ -1,4 +1,8 @@
-import { GpuInfo, HostHealth } from './gpuMonitor';
+// Fleet data model shared by the sidebar, the dashboard and the status bar.
+// Modified for ServerLens (2026): CPU, memory, disk and per-metric timestamps; visibleFleet.
+import { GpuInfo, GpuState } from './gpuMonitor';
+import { CpuInfo, MemoryInfo, SystemInfo } from './hostMetrics';
+import { DiskReport } from './diskMetrics';
 
 export interface AvailabilitySettings {
     availabilityRequireNoProcesses: boolean;
@@ -16,7 +20,11 @@ export interface FleetGpuInfo extends GpuInfo {
 }
 
 export type ServerErrorCategory =
-    'timeout' | 'authentication' | 'host-not-found' | 'unreachable' | 'nvidia-smi' | 'unknown';
+    | 'timeout' | 'cancelled' | 'authentication' | 'host-key' | 'host-not-found' | 'unreachable'
+    | 'refused' | 'connection-closed' | 'ssh-missing' | 'output-too-large' | 'invalid-target'
+    | 'incomplete' | 'unknown';
+
+export type MetricKind = 'gpu' | 'cpu' | 'memory' | 'disk' | 'system';
 
 export interface ServerMetadata {
     alias?: string;
@@ -28,7 +36,15 @@ export interface ServerStatus {
     hiddenGpuCount?: number;
     host: string;
     gpus: FleetGpuInfo[];
-    health?: HostHealth;
+    /** 'missing' means no nvidia-smi: a CPU-only server, not an error. */
+    gpuState?: GpuState;
+    gpuError?: string;
+    cpu?: CpuInfo;
+    memory?: MemoryInfo;
+    system?: SystemInfo;
+    disks?: DiskReport;
+    /** Time of the last successful collection of each metric. */
+    updatedAt?: Partial<Record<MetricKind, number>>;
     collectedAt: number;
     latencyMs: number;
     lastSuccessAt?: number;
@@ -36,10 +52,13 @@ export interface ServerStatus {
     metadata?: ServerMetadata;
     duplicateOf?: string;
     slurmAvailable?: boolean;
-    healthAvailable?: boolean;
+    /** Connection-level failure; per-metric problems use gpuError and disks.error. */
     error?: string;
+    errorDetail?: string;
     errorCategory?: ServerErrorCategory;
     nextRetryAt?: number;
+    /** The last collection reused a shared SSH connection. */
+    multiplexed?: boolean;
 }
 
 export interface GpuStatusSummary {
@@ -199,4 +218,27 @@ export function aggregateUsers(data: ServerStatus[]): UserSummary[] {
             memoryMiB: Math.round(value.memoryMiB)
         }))
         .sort((left, right) => right.memoryMiB - left.memoryMiB || left.user.localeCompare(right.user));
+}
+
+/** A host's latest data before GPU availability rules are applied. */
+export type ServerSnapshotData = Omit<ServerStatus, 'gpus'> & { gpus: GpuInfo[] };
+
+/**
+ * Applies availability rules and user metadata, marks aliases of the same physical machine
+ * and sorts favorites first, then by group (the order the dashboard has always used).
+ */
+export function composeFleet(
+    snapshots: ServerSnapshotData[],
+    settings: AvailabilitySettings,
+    metadata: Record<string, ServerMetadata>
+): ServerStatus[] {
+    const data: ServerStatus[] = snapshots.map(snapshot => ({
+        ...snapshot,
+        gpus: decorateGpus(snapshot.gpus, settings),
+        metadata: metadata[snapshot.host]
+    }));
+    return markDuplicateServers(data).sort((left, right) => {
+        const favorite = Number(Boolean(right.metadata?.favorite)) - Number(Boolean(left.metadata?.favorite));
+        return favorite || (left.metadata?.group || '').localeCompare(right.metadata?.group || '');
+    });
 }

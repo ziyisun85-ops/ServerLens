@@ -54,34 +54,54 @@
 				{
 					"id": "serverlens",
 					"title": "ServerLens",
-					"icon": "resources/gpu-icon.svg"
+					"icon": "resources/serverlens.svg"
 				}
 			]
 		},
 		"views": {
 			"serverlens": [
 				{
+					"type": "webview",
+					"id": "serverlens.monitor",
+					"name": "Monitor",
+					"icon": "resources/serverlens.svg"
+				},
+				{
 					"id": "serverlens.servers",
 					"name": "Servers",
-					"icon": "resources/gpu-icon.svg"
+					"icon": "resources/serverlens.svg",
+					"visibility": "collapsed"
 				}
 			]
 		},
 		"commands": [
 			{
 				"command": "serverlens.refresh",
-				"title": "Refresh GPU Status",
+				"title": "Refresh All Servers",
+				"category": "ServerLens",
+				"icon": "$(refresh)"
+			},
+			{
+				"command": "serverlens.refreshServer",
+				"title": "Refresh Server",
 				"category": "ServerLens",
 				"icon": "$(refresh)"
 			},
 			{
 				"command": "serverlens.addServer",
 				"title": "Add Server",
-				"category": "ServerLens"
+				"category": "ServerLens",
+				"icon": "$(add)"
 			},
 			{
 				"command": "serverlens.openDashboard",
 				"title": "Open Dashboard",
+				"category": "ServerLens",
+				"icon": "$(dashboard)"
+			},
+			{
+				"command": "serverlens.openServer",
+				"title": "Open Server in Dashboard",
 				"category": "ServerLens",
 				"icon": "$(dashboard)"
 			},
@@ -93,25 +113,117 @@
 			},
 			{
 				"command": "serverlens.connectSsh",
-				"title": "Connect SSH",
+				"title": "Connect with Remote-SSH",
 				"category": "ServerLens",
 				"icon": "$(remote)"
 			},
 			{
 				"command": "serverlens.configureServers",
-				"title": "Configure Servers",
+				"title": "Choose Servers",
 				"category": "ServerLens",
-				"icon": "$(gear)"
+				"icon": "$(server)"
 			},
 			{
 				"command": "serverlens.openSettings",
-				"title": "ServerLens Settings",
+				"title": "Open Settings",
 				"category": "ServerLens",
 				"icon": "$(settings-gear)"
+			},
+			{
+				"command": "serverlens.analyzeStorage",
+				"title": "Analyze Storage…",
+				"category": "ServerLens",
+				"icon": "$(search)"
+			},
+			{
+				"command": "serverlens.collapseAll",
+				"title": "Collapse All Cards",
+				"category": "ServerLens",
+				"icon": "$(collapse-all)"
+			},
+			{
+				"command": "serverlens.expandAll",
+				"title": "Expand All Cards",
+				"category": "ServerLens",
+				"icon": "$(expand-all)"
+			},
+			{
+				"command": "serverlens.copySshCommand",
+				"title": "Copy SSH Command",
+				"category": "ServerLens",
+				"icon": "$(copy)"
+			},
+			{
+				"command": "serverlens.muteDiskAlert",
+				"title": "Mute Alerts for This Disk",
+				"category": "ServerLens",
+				"icon": "$(bell-slash)"
+			},
+			{
+				"command": "serverlens.resetDiskAlerts",
+				"title": "Reset Disk Alerts",
+				"category": "ServerLens",
+				"icon": "$(bell)"
+			},
+			{
+				"command": "serverlens.showLog",
+				"title": "Show Log",
+				"category": "ServerLens",
+				"icon": "$(output)"
 			}
 		],
 		"menus": {
 			"view/title": [
+				{
+					"command": "serverlens.refresh",
+					"when": "view == serverlens.monitor",
+					"group": "navigation@1"
+				},
+				{
+					"command": "serverlens.openDashboard",
+					"when": "view == serverlens.monitor",
+					"group": "navigation@2"
+				},
+				{
+					"command": "serverlens.collapseAll",
+					"when": "view == serverlens.monitor",
+					"group": "navigation@3"
+				},
+				{
+					"command": "serverlens.addServer",
+					"when": "view == serverlens.monitor",
+					"group": "1_servers@1"
+				},
+				{
+					"command": "serverlens.configureServers",
+					"when": "view == serverlens.monitor",
+					"group": "1_servers@2"
+				},
+				{
+					"command": "serverlens.expandAll",
+					"when": "view == serverlens.monitor",
+					"group": "2_view@1"
+				},
+				{
+					"command": "serverlens.analyzeStorage",
+					"when": "view == serverlens.monitor",
+					"group": "3_tools@1"
+				},
+				{
+					"command": "serverlens.findAvailableGpu",
+					"when": "view == serverlens.monitor",
+					"group": "3_tools@2"
+				},
+				{
+					"command": "serverlens.openSettings",
+					"when": "view == serverlens.monitor",
+					"group": "4_settings@1"
+				},
+				{
+					"command": "serverlens.showLog",
+					"when": "view == serverlens.monitor",
+					"group": "4_settings@2"
+				},
 				{
 					"command": "serverlens.configureServers",
 					"when": "view == serverlens.servers",
@@ -133,6 +245,75 @@
 					"command": "serverlens.connectSsh",
 					"when": "view == serverlens.servers && viewItem == server",
 					"group": "inline"
+				},
+				{
+					"command": "serverlens.refreshServer",
+					"when": "view == serverlens.servers && viewItem == server",
+					"group": "1_server@1"
+				},
+				{
+					"command": "serverlens.analyzeStorage",
+					"when": "view == serverlens.servers && viewItem == server",
+					"group": "1_server@2"
+				},
+				{
+					"command": "serverlens.copySshCommand",
+					"when": "view == serverlens.servers && viewItem == server",
+					"group": "1_server@3"
+				}
+			],
+			"webview/context": [
+				{
+					"command": "serverlens.refreshServer",
+					"when": "webviewId == 'serverlens.monitor' && (webviewSection == 'server' || webviewSection == 'disk')",
+					"group": "1_server@1"
+				},
+				{
+					"command": "serverlens.openServer",
+					"when": "webviewId == 'serverlens.monitor' && webviewSection == 'server'",
+					"group": "1_server@2"
+				},
+				{
+					"command": "serverlens.connectSsh",
+					"when": "webviewId == 'serverlens.monitor' && webviewSection == 'server'",
+					"group": "1_server@3"
+				},
+				{
+					"command": "serverlens.analyzeStorage",
+					"when": "webviewId == 'serverlens.monitor' && (webviewSection == 'server' || webviewSection == 'disk')",
+					"group": "2_storage@1"
+				},
+				{
+					"command": "serverlens.muteDiskAlert",
+					"when": "webviewId == 'serverlens.monitor' && webviewSection == 'disk'",
+					"group": "2_storage@2"
+				},
+				{
+					"command": "serverlens.copySshCommand",
+					"when": "webviewId == 'serverlens.monitor' && webviewSection == 'server'",
+					"group": "3_copy@1"
+				}
+			],
+			"commandPalette": [
+				{
+					"command": "serverlens.refreshServer",
+					"when": "false"
+				},
+				{
+					"command": "serverlens.openServer",
+					"when": "false"
+				},
+				{
+					"command": "serverlens.connectSsh",
+					"when": "false"
+				},
+				{
+					"command": "serverlens.copySshCommand",
+					"when": "false"
+				},
+				{
+					"command": "serverlens.muteDiskAlert",
+					"when": "false"
 				}
 			]
 		},
@@ -165,7 +346,7 @@
 						"type": "string"
 					},
 					"default": [],
-					"description": "List of SSH hosts to monitor"
+					"description": "SSH host aliases to monitor. Empty = every concrete Host in the SSH config file."
 				},
 				"serverlens.additionalHosts": {
 					"type": "array",
@@ -183,24 +364,57 @@
 					"default": [],
 					"description": "List of SSH hosts to ignore"
 				},
+				"serverlens.connectionReuse": {
+					"type": "boolean",
+					"default": true,
+					"description": "Reuse one SSH connection per server (OpenSSH ControlMaster) instead of opening a new one for every refresh. Not available on Windows."
+				},
+				"serverlens.connectionIdleSeconds": {
+					"type": "number",
+					"default": 120,
+					"minimum": 10,
+					"maximum": 3600,
+					"description": "Seconds a shared SSH connection stays open after the last command."
+				},
 				"serverlens.autoRefresh": {
 					"type": "boolean",
 					"default": true,
-					"description": "Enable auto-refresh of GPU status"
+					"description": "Refresh automatically. When off, data updates only on manual refresh."
 				},
 				"serverlens.refreshInterval": {
 					"type": "number",
 					"default": 5,
 					"minimum": 2,
 					"maximum": 300,
-					"description": "Refresh interval in seconds"
+					"description": "GPU refresh interval in seconds."
+				},
+				"serverlens.cpuRefreshInterval": {
+					"type": "number",
+					"default": 5,
+					"minimum": 2,
+					"maximum": 300,
+					"description": "CPU usage and load refresh interval in seconds."
+				},
+				"serverlens.memoryRefreshInterval": {
+					"type": "number",
+					"default": 5,
+					"minimum": 2,
+					"maximum": 300,
+					"description": "Memory and swap refresh interval in seconds."
+				},
+				"serverlens.diskRefreshInterval": {
+					"type": "number",
+					"default": 60,
+					"minimum": 10,
+					"maximum": 3600,
+					"description": "Disk capacity and quota refresh interval in seconds."
 				},
 				"serverlens.sshTimeout": {
 					"type": "number",
 					"default": 8,
 					"minimum": 2,
 					"maximum": 60,
-					"description": "SSH connection and command timeout in seconds"
+					"description": "SSH connection timeout in seconds; each remote command is also limited to this time."
 				},
 				"serverlens.maxConcurrentHosts": {
 					"type": "number",
@@ -212,7 +426,105 @@
 				"serverlens.pauseWhenHidden": {
 					"type": "boolean",
 					"default": true,
-					"description": "Pause automatic SSH refreshes while the dashboard is hidden"
+					"description": "Pause automatic refresh while neither the ServerLens sidebar nor a dashboard is visible."
+				},
+				"serverlens.diskWarningThreshold": {
+					"type": "number",
+					"default": 70,
+					"minimum": 1,
+					"maximum": 100,
+					"description": "Disk usage (%) shown in yellow. Below this the bar is green."
+				},
+				"serverlens.diskCriticalThreshold": {
+					"type": "number",
+					"default": 90,
+					"minimum": 1,
+					"maximum": 100,
+					"description": "Disk usage (%) shown in red and used for capacity alerts."
+				},
+				"serverlens.diskAlerts": {
+					"type": "string",
+					"enum": [
+						"off",
+						"critical",
+						"warning"
+					],
+					"enumDescriptions": [
+						"No disk notifications",
+						"Notify once when a disk reaches the critical threshold",
+						"Notify at the warning threshold and again at the critical threshold"
+					],
+					"default": "critical",
+					"description": "Disk capacity notifications. Each disk notifies once per crossing and can be snoozed or muted."
+				},
+				"serverlens.pinnedMounts": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"default": [],
+					"markdownDescription": "Paths to always show first, e.g. `/data`, `~/projects`, or `gpu-01:/scratch` for one server. A path that is not a mount point shows the filesystem it lives on."
+				},
+				"serverlens.hiddenMounts": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"default": [],
+					"markdownDescription": "Extra mount point patterns to hide, e.g. `/mnt/backup*` or `gpu-01:/var/*`. System mounts such as `/proc`, `/run` and `/snap/*` are hidden already."
+				},
+				"serverlens.hiddenFilesystemTypes": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"default": [],
+					"markdownDescription": "Extra filesystem types to hide, e.g. `nfs4` or `fuse.*`. Pseudo filesystems such as `tmpfs` and `overlay` are hidden already."
+				},
+				"serverlens.showAllFilesystems": {
+					"type": "boolean",
+					"default": false,
+					"description": "Show every filesystem, including tmpfs, overlay, squashfs and system mounts."
+				},
+				"serverlens.showQuota": {
+					"type": "boolean",
+					"default": true,
+					"description": "Read personal disk quotas with quota/lfs when the server provides them. Shown separately from free disk space."
+				},
+				"serverlens.byteUnits": {
+					"type": "string",
+					"enum": [
+						"iec",
+						"si"
+					],
+					"enumDescriptions": [
+						"KiB, MiB, GiB, TiB (base 1024, like df -h and nvidia-smi)",
+						"kB, MB, GB, TB (base 1000, like disk vendors)"
+					],
+					"default": "iec",
+					"description": "Units for memory and disk sizes."
+				},
+				"serverlens.storagePaths": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"default": [],
+					"markdownDescription": "Folders offered by **Analyze Storage**, as `path` or `Label=path`, e.g. `Checkpoints=/data/alice/ckpt`, `~/projects`, `Logs=~/logs`."
+				},
+				"serverlens.storageScanDepth": {
+					"type": "number",
+					"default": 2,
+					"minimum": 1,
+					"maximum": 4,
+					"description": "How many folder levels Analyze Storage reports (du -d)."
+				},
+				"serverlens.storageScanTimeout": {
+					"type": "number",
+					"default": 60,
+					"minimum": 10,
+					"maximum": 600,
+					"description": "Time limit for one storage scan, in seconds. The scan runs with low CPU and I/O priority and is only started by you."
 				},
 				"serverlens.compactLayout": {
 					"type": "boolean",
@@ -247,7 +559,7 @@
 				"serverlens.showHostHealth": {
 					"type": "boolean",
 					"default": true,
-					"description": "Show lightweight CPU load, RAM, root disk, uptime, and SSH latency metrics"
+					"description": "Show CPU, RAM, the fullest disk, uptime and SSH latency on dashboard server cards."
 				},
 				"serverlens.enableSlurmIntegration": {
 					"type": "boolean",
@@ -283,7 +595,7 @@
 				"serverlens.showStatusBar": {
 					"type": "boolean",
 					"default": true,
-					"description": "Show aggregate GPU availability in the VS Code status bar"
+					"description": "Show free GPUs and full disks in the status bar."
 				},
 				"serverlens.enableNotifications": {
 					"type": "boolean",
@@ -361,11 +673,12 @@
 		"vscode:prepublish": "npm run compile",
 		"compile": "tsc -p ./",
 		"dev": "npm run compile && node scripts/renderPreview.js && python3 -m http.server 8765 --bind 127.0.0.1",
-		"preview:build": "npm run compile && node scripts/renderPreview.js",
+		"preview:build": "npm run compile && node scripts/renderPreview.js && node scripts/renderSidebarPreview.js",
 		"watch": "tsc -watch -p ./",
 		"pretest": "npm run compile && npm run lint",
 		"lint": "eslint src --ext ts",
-		"test": "node scripts/checkLocales.js && node ./out/test/manual_test.js && node scripts/checkRefresh.js && npm run preview:build && node scripts/checkWebview.js"
+		"test": "node scripts/checkLocales.js && node ./out/test/manual_test.js && node ./out/test/parsers_test.js && node ./out/test/collect_test.js && node ./out/test/transport_test.js && node ./out/test/scheduler_test.js && node ./out/test/storage_alerts_test.js && node scripts/checkRefresh.js && npm run preview:build && node scripts/checkWebview.js && node scripts/checkSidebar.js",
+		"package": "vsce package --out releases/"
 	},
 	"devDependencies": {
 		"@types/glob": "^8.1.0",

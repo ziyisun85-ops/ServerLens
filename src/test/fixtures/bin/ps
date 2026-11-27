@@ -1,0 +1,3 @@
+#!/bin/sh
+echo " 4242 alice      18420 Mon Nov 24 09:12:03 2026 /usr/bin/python3 train.py --config cfg.yaml"
+echo " 4243 bob          300 Thu Nov 27 20:00:00 2026 python worker.py"

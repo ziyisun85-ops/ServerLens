@@ -1,0 +1,30 @@
+#!/bin/sh
+# Fake OpenSSH client for ServerLens transport tests. Records its arguments, then behaves
+# according to the target host name.
+log=${FAKE_SSH_LOG:-/dev/null}
+# Build the whole line first: concurrent fake ssh processes append to the same log.
+line="$$"
+sep=$(printf '\037')
+for arg in "$@"; do line="$line$sep$arg"; done
+printf '%s\n' "$line" >> "$log"
+host=
+control=
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -O) control=$2; shift 2;;
+    --) host=$2; shift 2; break;;
+    *) shift;;
+  esac
+done
+if [ -n "$control" ]; then exit 0; fi
+case "$host" in
+  ok) exec sh -s;;
+  auth) echo "alice@auth: Permission denied (publickey)." >&2; exit 255;;
+  unknown-host) echo "ssh: Could not resolve hostname unknown-host: nodename nor servname provided, or not known" >&2; exit 255;;
+  refused) echo "ssh: connect to host refused port 22: Connection refused" >&2; exit 255;;
+  hostkey) echo "Host key verification failed." >&2; exit 255;;
+  hang) exec sleep 30;;
+  drop) head -c 10 >/dev/null; printf 'partial'; echo "Connection to drop closed by remote host." >&2; exit 255;;
+  flood) cat >/dev/null; exec yes 0123456789abcdef;;
+  *) echo "unexpected host $host" >&2; exit 255;;
+esac
