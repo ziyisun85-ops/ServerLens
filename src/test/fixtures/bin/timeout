@@ -1,7 +1,15 @@
 #!/bin/sh
-# Fake GNU timeout: "timeout SECONDS COMMAND...". In df-hang mode a non-local df "times out".
+# Fake GNU timeout: "timeout [-k KILL] [-s SIG] SECONDS COMMAND...". In df-hang mode a
+# non-local df "times out"; in smi-slow mode nvidia-smi does.
+while :; do
+  case "$1" in
+    -k|-s) shift 2;;
+    *) break;;
+  esac
+done
 shift
 if [ "$FAKE_MODE" = df-hang ] && [ "$1" = df ]; then
   case " $* " in *" -l "*) ;; *" -T "*) exit 124;; esac
 fi
+if [ "$FAKE_MODE" = smi-slow ] && [ "${1##*/}" = nvidia-smi ]; then exit 124; fi
 exec "$@"

@@ -59,6 +59,10 @@ const MIN_BACKOFF_MS = 10_000;
 const MAX_BACKOFF_MS = 120_000;
 const DISK_SUSPEND_MS = 10 * 60_000;
 const CPU_SAMPLE_MAX_AGE_MS = 5 * 60_000;
+/** nvidia-smi limit after it timed out once; contended hosts can take tens of seconds. */
+const SLOW_GPU_TIMEOUT_SECONDS = 45;
+/** Upper bound for slowing down a host whose collections take long. */
+const MAX_PACING_MS = 5 * 60_000;
 
 interface HostState {
     host: string;
@@ -71,6 +75,8 @@ interface HostState {
     failures: number;
     nextRetryAt: number;
     diskSuspendedUntil: number;
+    /** Set after nvidia-smi timed out on this host. */
+    slowGpuTimeoutSeconds?: number;
     abort?: AbortController;
     waiters: (() => void)[];
 }
@@ -415,7 +421,8 @@ export class MonitorService {
             disk: metrics.has('disk'),
             pinnedPaths: metrics.has('disk') ? filters.pinnedPaths : [],
             quota: metrics.has('disk') && config.quota,
-            commandTimeoutSeconds: Math.max(3, Math.min(30, config.sshTimeoutSeconds))
+            commandTimeoutSeconds: Math.max(3, Math.min(30, config.sshTimeoutSeconds)),
+            gpuTimeoutSeconds: state.slowGpuTimeoutSeconds
         };
     }
 
@@ -430,8 +437,9 @@ export class MonitorService {
         state.abort = abort;
         const sshTimeout = Math.max(2, Math.min(60, config.sshTimeoutSeconds));
         try {
+            const gpuSeconds = request.gpu ? request.gpuTimeoutSeconds || request.commandTimeoutSeconds : 0;
             const result = await this.runner.exec(state.host, script, {
-                timeoutMs: (sshTimeout + request.commandTimeoutSeconds * 3) * 1000,
+                timeoutMs: (sshTimeout + gpuSeconds * 2 + request.commandTimeoutSeconds * 3) * 1000,
                 connectTimeoutSeconds: sshTimeout,
                 signal: abort.signal
             });
@@ -460,8 +468,19 @@ export class MonitorService {
             snapshot.lastSuccessAt = finishedAt;
             snapshot.latencyMs = result.durationMs;
             snapshot.multiplexed = result.multiplexed;
+            const gpuSection = output.sections.get('gpu');
+            if (request.gpu && gpuSection?.exitCode === 124) {
+                // nvidia-smi is stuck behind other callers or an uninitialised driver: give it more
+                // time next round instead of never showing GPUs for this host.
+                state.slowGpuTimeoutSeconds = Math.min(60, Math.max(SLOW_GPU_TIMEOUT_SECONDS, request.commandTimeoutSeconds * 2));
+            } else if (request.gpu && gpuSection?.exitCode === 0 && result.durationMs < request.commandTimeoutSeconds * 1000) {
+                state.slowGpuTimeoutSeconds = undefined;
+            }
             for (const metric of job.metrics) {
-                state.due[metric] = finishedAt + this.intervalMs(metric, config);
+                // A host that needs long for one round is polled less often, so monitoring never
+                // occupies a struggling server continuously.
+                const pacing = Math.min(MAX_PACING_MS, result.durationMs * 2);
+                state.due[metric] = finishedAt + Math.max(this.intervalMs(metric, config), pacing);
             }
             this.log.debug(`${state.host}: collected ${Array.from(job.metrics).join(',')} in ${result.durationMs} ms`);
         } catch (error) {

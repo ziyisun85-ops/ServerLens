@@ -146,6 +146,17 @@ async function runModes(home: string): Promise<void> {
     assert.deepStrictEqual(hungDisks?.disks.map(disk => disk.mountPoint), ['/data', '/']);
     hung.dispose();
 
+    // nvidia-smi that does not answer in time: reported, retried with a longer limit next round.
+    const slowRunner = localRunner('/bin/sh', 'smi-slow', home);
+    const slow = new MonitorService(slowRunner, () => config());
+    await slow.refresh();
+    assert.strictEqual(slow.getSnapshot('lab-node')?.gpuError, 'nvidia-smi did not respond in time.');
+    assert.ok(slow.getSnapshot('lab-node')?.memory, 'A slow nvidia-smi does not hide CPU, memory and disks.');
+    await slow.refresh();
+    assert.ok(/SL_GTO=45$/m.test(slowRunner.scripts[1]), 'After a GPU timeout the next round allows nvidia-smi more time.');
+    assert.ok(slowRunner.scripts[0].includes('timeout -k 2'), 'GNU timeout also kills commands that ignore SIGTERM.');
+    slow.dispose();
+
     // df without -T (old busybox): types come from /proc/mounts.
     const noType = new MonitorService(localRunner('/bin/sh', 'df-notype', home), () => config());
     await noType.refresh();

@@ -27,6 +27,8 @@ export interface CollectRequest {
     quota: boolean;
     /** Per-command limit applied with `timeout` when the host has it. */
     commandTimeoutSeconds: number;
+    /** Limit for nvidia-smi; raised for hosts where nvidia-smi is known to be slow. */
+    gpuTimeoutSeconds?: number;
 }
 
 /** Locations that tests replace with fixture directories. */
@@ -75,15 +77,18 @@ function marker(nonce: string, text: string): string {
     return `@@SL:${nonce}:${text}@@`;
 }
 
-const PRELUDE = (nonce: string, timeoutSeconds: number) => `SL_N=${nonce}
+const PRELUDE = (nonce: string, timeoutSeconds: number, gpuTimeoutSeconds: number) => `SL_N=${nonce}
 SL_TO=${Math.max(2, Math.round(timeoutSeconds))}
+SL_GTO=${Math.max(2, Math.round(gpuTimeoutSeconds))}
 LC_ALL=C
 LANG=C
 export LC_ALL LANG
 sl_begin() { printf '\\n@@SL:%s:begin %s@@\\n' "$SL_N" "$1"; }
 sl_end() { printf '\\n@@SL:%s:end %s %s@@\\n' "$SL_N" "$1" "$2"; }
 sl_have() { command -v "$1" >/dev/null 2>&1; }
-if sl_have timeout && timeout 5 true >/dev/null 2>&1; then
+if sl_have timeout && timeout -k 1 5 true >/dev/null 2>&1; then
+  sl_t() { timeout -k 2 "$@"; }
+elif sl_have timeout && timeout 5 true >/dev/null 2>&1; then
   sl_t() { timeout "$@"; }
 else
   sl_t() { shift; "$@"; }
@@ -94,7 +99,7 @@ function gpuSection(request: CollectRequest): string {
         `sl_begin gpu`,
         `SL_SMI=`,
         `if sl_have nvidia-smi; then SL_SMI=nvidia-smi; else for c in /usr/bin/nvidia-smi /usr/local/nvidia/bin/nvidia-smi /usr/local/bin/nvidia-smi; do if [ -x "$c" ]; then SL_SMI=$c; break; fi; done; fi`,
-        `if [ -n "$SL_SMI" ]; then sl_t "$SL_TO" "$SL_SMI" --query-gpu=${GPU_QUERY_FIELDS} --format=csv,noheader,nounits 2>&1; sl_rc=$?; else sl_rc=127; fi`,
+        `if [ -n "$SL_SMI" ]; then sl_t "$SL_GTO" "$SL_SMI" --query-gpu=${GPU_QUERY_FIELDS} --format=csv,noheader,nounits 2>&1; sl_rc=$?; else sl_rc=127; fi`,
         `sl_end gpu $sl_rc`,
         `sl_gpu_rc=$sl_rc`
     ];
@@ -103,7 +108,7 @@ function gpuSection(request: CollectRequest): string {
             `sl_begin gpuproc`,
             `sl_procs=`,
             `sl_rc=127`,
-            `if [ "$sl_gpu_rc" = 0 ]; then sl_procs=$(sl_t "$SL_TO" "$SL_SMI" --query-compute-apps=gpu_uuid,pid,process_name,used_memory --format=csv,noheader,nounits 2>/dev/null); sl_rc=$?; printf '%s\\n' "$sl_procs"; fi`,
+            `if [ "$sl_gpu_rc" = 0 ]; then sl_procs=$(sl_t "$SL_GTO" "$SL_SMI" --query-compute-apps=gpu_uuid,pid,process_name,used_memory --format=csv,noheader,nounits 2>/dev/null); sl_rc=$?; printf '%s\\n' "$sl_procs"; fi`,
             `sl_end gpuproc $sl_rc`
         );
     }
@@ -234,7 +239,7 @@ export function buildCollectScript(request: CollectRequest, nonce: string, roots
     }
     // The whole body is parsed before it runs, and its stdin is /dev/null, so no command
     // can consume the rest of the script from `sh -s`.
-    return `${PRELUDE(nonce, request.commandTimeoutSeconds)}
+    return `${PRELUDE(nonce, request.commandTimeoutSeconds, request.gpuTimeoutSeconds || request.commandTimeoutSeconds)}
 sl_main() {
 :
 ${sections.join('\n')}
