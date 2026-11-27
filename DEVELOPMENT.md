@@ -167,7 +167,7 @@ npm test            # 12 个测试脚本，含 jsdom 界面测试
 npm run package     # 生成 releases/serverlens-<version>.vsix
 ```
 
-预览和截图：`npm run preview:build` 生成 `preview/index.html`（仪表盘）和 `preview/sidebar-*.html`（侧边栏），可直接用浏览器打开。
+预览和截图：`npm run preview:build` 生成 `preview/index.html`（仪表盘）和 `preview/sidebar-*.html`（侧边栏），可直接用浏览器打开。在 macOS 上运行 `scripts/screenshots.sh` 可重新生成 `docs/screenshots/`（需要 Google Chrome）。
 
 真实服务器检查（不在 `npm test` 中，只执行只读命令）：
 
